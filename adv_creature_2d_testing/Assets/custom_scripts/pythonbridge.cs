@@ -61,23 +61,21 @@ public class PythonBridge : MonoBehaviour
         registeredCreatures.Remove(brain);
     }
 
-    private void FixedUpdate()
+  private void FixedUpdate()
     {
         if (stream == null || registeredCreatures.Count == 0)
-            return; // not connected yet, or nothing to simulate
+            return;
 
         JObject message = BuildInputMessage();
         SendMessageBlocking(message);
-        JObject response = ReceiveMessageBlocking(); // <- Unity's main thread
-                                                       // sits here until
-                                                       // Python responds;
-                                                       // nothing else in
-                                                       // the scene can
-                                                       // proceed either
+        JObject response = ReceiveMessageBlocking();
         ApplyOutputs(response);
 
-        // The ONLY place physics advances, now that simulationMode is
-        // Script -- and only after every creature's motors are set.
+        // NEW -- after this tick's deltas are applied, before physics
+        // advances: cost the movement and compute dopamine from it
+        foreach (CreatureBrain brain in registeredCreatures)
+            brain.UpdateEnergyAndDopamine();
+
         Physics2D.Simulate(Time.fixedDeltaTime);
     }
 
@@ -131,14 +129,22 @@ public class PythonBridge : MonoBehaviour
             if (creatures[creatureId] == null)
                 continue; // python sent nothing for this creature this tick -- skip it, don't crash
 
-            JObject deltasObj = (JObject)creatures[creatureId]["deltas"];
-            Dictionary<Limb, float> deltas = new Dictionary<Limb, float>();
-            foreach (Limb limb in brain.allLimbs)
+            JObject creatureData = (JObject)creatures[creatureId];
+            if (creatureData["deltas"] is JObject deltasObj)
             {
-                if (deltasObj[limb.limbId] != null)
-                    deltas[limb] = deltasObj[limb.limbId].Value<float>();
+                Dictionary<Limb, float> deltas = new Dictionary<Limb, float>();
+                foreach (Limb limb in brain.allLimbs)
+                {
+                    if (deltasObj[limb.limbId] != null)
+                        deltas[limb] = deltasObj[limb.limbId].Value<float>();
+                }
+                brain.SetAllJointDeltaAngles(deltas);
             }
-            brain.SetAllJointDeltaAngles(deltas);
+
+            if (creatureData["telemetry"] is JObject telemObj)
+            {
+                brain.UpdateTelemetry(telemObj);
+            }
         }
     }
 

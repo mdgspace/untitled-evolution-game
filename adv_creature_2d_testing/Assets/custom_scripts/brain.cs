@@ -1,20 +1,12 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Newtonsoft.Json.Linq;
 
-// Still no real decision-making -- that now lives entirely in Python.
-// This class is pure plumbing: gathers inputs, tracks goal-setter memory,
-// applies whatever deltas PythonBridge hands back.
-//
-// No FixedUpdate here anymore. PythonBridge is the single authority
-// driving every creature's tick in the same explicit order each cycle --
-// letting each CreatureBrain run its own independent FixedUpdate would
-// make the gather/round-trip/apply sequence race against an unspecified
-// per-component execution order across creatures, which defeats the
-// point of one deterministic gate.
 public class CreatureBrain : MonoBehaviour
 {
     public Torso torso;
     public List<Limb> allLimbs;
+    public JObject latestTelemetry;
 
     [Header("Goal-setter memory")]
     public int memoryFrameCount = 5;
@@ -32,20 +24,27 @@ public class CreatureBrain : MonoBehaviour
         positionMemory = new FrameHistoryBuffer(memoryFrameCount, 2);
         visionMemory = new FrameHistoryBuffer(memoryFrameCount, 4);
 
-        PythonBridge bridge = FindAnyObjectByType<PythonBridge>();
+        if (GetComponent<CreatureTelemetryUI>() == null)
+            gameObject.AddComponent<CreatureTelemetryUI>();
+
+        PythonBridge bridge = FindObjectOfType<PythonBridge>();
         if (bridge != null)
             bridge.RegisterCreature(this);
         else
             Debug.LogWarning("CreatureBrain: no PythonBridge in the scene -- this creature won't be driven by Python.");
     }
 
+    public void UpdateTelemetry(JObject telem)
+    {
+        latestTelemetry = telem;
+    }
+
     private void OnDestroy()
     {
-        PythonBridge bridge = FindAnyObjectByType<PythonBridge>();
+        PythonBridge bridge = FindObjectOfType<PythonBridge>();
         if (bridge != null) bridge.UnregisterCreature(this);
     }
 
-    // ---- INPUTS ----
     public Dictionary<string, float> GetGlobalInputs() => torso.GetGlobalInputs();
     public Dictionary<string, float> GetLocalInputs(Limb limb) => limb.GetLocalInputs();
 
@@ -57,9 +56,6 @@ public class CreatureBrain : MonoBehaviour
         return result;
     }
 
-    // ---- MEMORY ----
-    // Called explicitly by PythonBridge once per tick, before that tick's
-    // message is built -- not on any timer of its own.
     public void UpdateMemory()
     {
         Dictionary<string, float> globals = torso.GetGlobalInputs();
@@ -72,6 +68,16 @@ public class CreatureBrain : MonoBehaviour
         visionMemory.PushFrame(visionFrame);
     }
 
+    // NEW -- called by PythonBridge after this tick's deltas are applied,
+    // before physics steps. Order matters: energy drain needs this tick's
+    // lastAppliedDelta already set on every limb, and dopamine needs that
+    // tick's energy cost already computed.
+    public void UpdateEnergyAndDopamine()
+    {
+        torso.DrainEnergy(allLimbs);
+        torso.UpdateDopamine();
+    }
+
     public float[] GetGoalSetterInputs()
     {
         float[] posHistory = positionMemory.GetConcatenated();
@@ -82,7 +88,6 @@ public class CreatureBrain : MonoBehaviour
         return combined;
     }
 
-    // ---- OUTPUTS ----
     public void SetJointDeltaAngle(Limb limb, float deltaDegrees) => limb.ApplyDeltaAngle(deltaDegrees);
 
     public void SetAllJointDeltaAngles(Dictionary<Limb, float> deltas)
@@ -91,10 +96,6 @@ public class CreatureBrain : MonoBehaviour
             kv.Key.ApplyDeltaAngle(kv.Value);
     }
 
-    // ---- MOCK OUTPUT GENERATION ----
-    // Nothing calls this automatically anymore now that PythonBridge owns
-    // the tick loop -- still here for isolated testing without Python
-    // connected at all, call it manually if useful.
     public Dictionary<Limb, float> GenerateMockOutputs()
     {
         Dictionary<Limb, float> deltas = new Dictionary<Limb, float>();

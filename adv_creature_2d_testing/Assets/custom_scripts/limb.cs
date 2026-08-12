@@ -21,7 +21,8 @@ public class Limb : MonoBehaviour
     public float maxMotorTorque = 50f;
 
     public BodyPart bodyPart;
-    public string limbId;   // stable id so Python can correlate deltas back to the right limb
+    public string limbId;
+    public float lastAppliedDelta;   // NEW -- read by Torso.DrainEnergy to cost movement
 
     private Rigidbody2D rb;
     private SpriteRenderer sr;
@@ -99,7 +100,6 @@ public class Limb : MonoBehaviour
         return limbs;
     }
 
-    // ================= TOUCH (LOCAL INPUT) =================
     private void OnCollisionEnter2D(Collision2D collision)
     {
         activeContacts.Add(collision.collider);
@@ -133,7 +133,6 @@ public class Limb : MonoBehaviour
         }
     }
 
-    // ================= LOCAL INPUTS =================
     public Dictionary<string, float> GetLocalInputs()
     {
         return new Dictionary<string, float>
@@ -145,9 +144,9 @@ public class Limb : MonoBehaviour
         };
     }
 
-    // ================= OUTPUT =================
     public void ApplyDeltaAngle(float deltaDegrees)
     {
+        lastAppliedDelta = deltaDegrees;   // NEW
         JointMotor2D motor = hinge.motor;
         motor.motorSpeed = deltaDegrees / Time.fixedDeltaTime;
         motor.maxMotorTorque = maxMotorTorque;

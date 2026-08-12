@@ -4,11 +4,13 @@ using UnityEngine;
 public class CreatureSpawner : MonoBehaviour
 {
     [Header("Spawn settings")]
+    public bool autoSpawnOnStart = false;
     public int creaturesToSpawn = 1;
     public float spawnSpacing = 5f;
 
     void Start()
     {
+        if (!autoSpawnOnStart) return;
         Debug.Log($"CreatureSpawner.Start() running. creaturesToSpawn = {creaturesToSpawn}");
         List<GameObject> result = SpawnCreatures(creaturesToSpawn, Vector2.zero, spawnSpacing);
         Debug.Log($"SpawnCreatures finished. {result.Count} creature(s) actually in the returned list.");
@@ -24,12 +26,6 @@ public class CreatureSpawner : MonoBehaviour
             {
                 GameObject creature = SpawnCreature(spawnPos);
                 spawned.Add(creature);
-
-                // FIX: GetInstanceID() is deprecated (hard compile error
-                // on recent Unity versions -- see explanation above). Log
-                // the creature's own persistent creatureId instead, which
-                // is more useful anyway since it survives independent of
-                // Unity's own internal identity system.
                 string shortId = creature.GetComponent<CreatureIdentity>().creatureId.Substring(0, 8);
                 Debug.Log($"  Creature {i} spawned OK: {creature.name} (id {shortId})");
             }
@@ -52,9 +48,7 @@ public class CreatureSpawner : MonoBehaviour
 
         CreatureIdentity identity = root.AddComponent<CreatureIdentity>();
         identity.creatureId = System.Guid.NewGuid().ToString();
-        identity.speciesId = "default_species"; // placeholder until body
-                                                   // speciation is ported
-                                                   // from the python side
+        identity.speciesId = "default_species";
 
         GameObject torsoGO = new GameObject("Torso");
         torsoGO.transform.SetParent(root.transform);
@@ -62,6 +56,7 @@ public class CreatureSpawner : MonoBehaviour
 
         Torso torso = torsoGO.AddComponent<Torso>();
         torso.Init(identity);
+        identity.torso = torso;   // NEW
 
         CreatureBrain brain = torsoGO.AddComponent<CreatureBrain>();
         brain.Init(torso, torso.GetAllLimbs());

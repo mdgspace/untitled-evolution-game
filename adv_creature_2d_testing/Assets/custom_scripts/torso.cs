@@ -7,22 +7,31 @@ using UnityEngine;
 public class Torso : MonoBehaviour
 {
     [Header("Size (world units)")]
-    public float minSize = 1.5f;
-    public float maxSize = 3.0f;
+    public float minSize = 1.0f;
+    public float maxSize = 2.0f;
     public Vector2 dimensions;
 
     [Header("Limbs")]
     public int numConnections;
     public List<Limb> childLimbs = new List<Limb>();
 
-    [Header("Global sensor state")]
+    [Header("Energy")]
     public float energy = 100f;
+    public float baselineMetabolism = 0.05f;    // cost per tick just for existing
+    public float movementCostPerDegree = 0.01f; // cost per tick per degree of commanded rotation, summed across all limbs
+    private float lastEnergyCost = 0f;          // this tick's total cost, read by UpdateDopamine
+
+    [Header("Dopamine")]
+    public float dopamine = 0f;
+    public int dopamineWindowSize = 5;
+    public float moveThreshold = 0.5f;
+    public float burstWeight = 1.0f;
+    private FrameHistoryBuffer dopaminePositionMemory;
+    private FrameHistoryBuffer dopamineEnergyCostMemory;
 
     [Header("Vision")]
     public float visionRadius = 8f;
-    public LayerMask visionMask = ~0;   // everything by default -- narrow in the
-                                          // Inspector for performance once creature
-                                          // counts get large
+    public LayerMask visionMask = ~0;
 
     public BodyPart bodyPart;
 
@@ -49,6 +58,9 @@ public class Torso : MonoBehaviour
         transform.localScale = new Vector3(dimensions.x, dimensions.y, 1f);
         col.size = Vector2.one;
         rb.bodyType = RigidbodyType2D.Dynamic;
+
+        dopaminePositionMemory = new FrameHistoryBuffer(dopamineWindowSize, 2);
+        dopamineEnergyCostMemory = new FrameHistoryBuffer(dopamineWindowSize, 1);
 
         numConnections = Random.Range(1, 8);
 
@@ -102,29 +114,92 @@ public class Torso : MonoBehaviour
         return all;
     }
 
+    // ================= ENERGY =================
+    // Called once per tick by CreatureBrain.UpdateEnergyAndDopamine, AFTER
+    // this tick's deltas have been applied to every limb (so
+    // lastAppliedDelta reflects what was actually commanded this tick),
+    // and BEFORE Physics2D.Simulate() advances the world.
+    public void DrainEnergy(List<Limb> limbs)
+    {
+        float movementCost = 0f;
+        foreach (Limb limb in limbs)
+            movementCost += Mathf.Abs(limb.lastAppliedDelta) * movementCostPerDegree;
+
+        lastEnergyCost = baselineMetabolism + movementCost;
+        energy -= lastEnergyCost;
+        energy = Mathf.Max(energy, 0f);
+        // NOTE: nothing happens when energy hits 0 yet -- death/removal
+        // handling is inventory item #9, not built yet.
+    }
+
+    // ================= DOPAMINE =================
+    // Formula: penalize any window where average movement falls below
+    // moveThreshold outright (-1), otherwise reward speed minus a
+    // quadratic penalty on bursty energy spending, tanh-clamped to
+    // [-1, 1]. Matches the "explicit movement gate" version we settled on
+    // earlier as the one to start with.
+    public void UpdateDopamine()
+    {
+        dopaminePositionMemory.PushFrame(new float[] { transform.position.x, transform.position.y });
+        dopamineEnergyCostMemory.PushFrame(new float[] { lastEnergyCost });
+
+        float[] posHistory = dopaminePositionMemory.GetConcatenated();
+        int frameCount = dopamineWindowSize;
+
+        float totalDisplacement = 0f;
+        for (int i = 1; i < frameCount; i++)
+        {
+            Vector2 prev = new Vector2(posHistory[(i - 1) * 2], posHistory[(i - 1) * 2 + 1]);
+            Vector2 curr = new Vector2(posHistory[i * 2], posHistory[i * 2 + 1]);
+            totalDisplacement += Vector2.Distance(prev, curr);
+        }
+        float avgSpeed = totalDisplacement / Mathf.Max(frameCount - 1, 1);
+
+        if (avgSpeed < moveThreshold)
+        {
+            dopamine = -1f;
+            return;
+        }
+
+        float[] energyHistory = dopamineEnergyCostMemory.GetConcatenated();
+        float burstPenalty = 0f;
+        foreach (float e in energyHistory)
+            burstPenalty += e * e;
+        burstPenalty /= Mathf.Max(energyHistory.Length, 1);
+
+        dopamine = (float)System.Math.Tanh(avgSpeed - burstWeight * burstPenalty);
+    }
+
     // ================= VISION =================
-    // Full 360-degree detection within visionRadius -- no directional/cone
-    // filtering, so there's no dependency on which way the torso happens
-    // to be facing (which was an open approximation in the cone version).
     private struct VisionReadout
     {
         public bool seesPredator, seesFood, seesPlayer, seesSameSpecies;
+        public Vector2 nearestFoodRelPos;
     }
 
     private VisionReadout ScanVision()
     {
         VisionReadout result = new VisionReadout();
         Vector2 origin = transform.position;
+        float minFoodDistSq = float.MaxValue;
 
         Collider2D[] hits = Physics2D.OverlapCircleAll(origin, visionRadius, visionMask);
         foreach (Collider2D hit in hits)
         {
-            if (hit.attachedRigidbody == rb) continue; // skip own torso collider
+            if (hit.attachedRigidbody == rb) continue;
 
-            // requires "Predator"/"Food"/"Player" tags to exist in this
-            // project (Project Settings -> Tags and Layers)
             if (hit.CompareTag("Predator")) result.seesPredator = true;
-            if (hit.CompareTag("Food")) result.seesFood = true;
+            if (hit.CompareTag("Food"))
+            {
+                result.seesFood = true;
+                Vector2 rel = (Vector2)hit.transform.position - origin;
+                float distSq = rel.sqrMagnitude;
+                if (distSq < minFoodDistSq)
+                {
+                    minFoodDistSq = distSq;
+                    result.nearestFoodRelPos = rel;
+                }
+            }
             if (hit.CompareTag("Player")) result.seesPlayer = true;
 
             BodyPart part = hit.GetComponent<BodyPart>();
@@ -148,10 +223,13 @@ public class Torso : MonoBehaviour
             { "angular_velocity", rb.angularVelocity },
             { "rotation", rb.rotation },
             { "energy", energy },
+            { "dopamine", dopamine },
             { "position_x", transform.position.x },
             { "position_y", transform.position.y },
             { "sees_predator", vision.seesPredator ? 1f : 0f },
             { "sees_food", vision.seesFood ? 1f : 0f },
+            { "rel_food_x", vision.seesFood ? vision.nearestFoodRelPos.x : 0f },
+            { "rel_food_y", vision.seesFood ? vision.nearestFoodRelPos.y : 0f },
             { "sees_player", vision.seesPlayer ? 1f : 0f },
             { "sees_same_species", vision.seesSameSpecies ? 1f : 0f }
         };
