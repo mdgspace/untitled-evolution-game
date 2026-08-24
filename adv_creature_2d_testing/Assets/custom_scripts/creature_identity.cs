@@ -4,6 +4,7 @@ public class CreatureIdentity : MonoBehaviour
 {
     public string creatureId;
     public string speciesId;
+    public string bodyGenomeJson;
 
     // Set once by CreatureSpawner right after Torso.Init() -- lets Food
     // (and later, Predator damage, etc) reach a creature's energy without

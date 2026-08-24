@@ -7,150 +7,114 @@ using UnityEngine;
 [RequireComponent(typeof(HingeJoint2D))]
 public class Limb : MonoBehaviour
 {
-    public const int MaxDepth = 5;
-
-    [Header("Size (world units)")]
     public Vector2 dimensions;
-
-    [Header("Chain info")]
+    public int innovationId;
+    public int parentInnovationId;
+    public int attachmentSlot;
     public int depth;
-    public bool hasConnection;
-    public Limb childLimb;
-
-    [Header("Joint motor")]
-    public float maxMotorTorque = 50f;
-
-    public BodyPart bodyPart;
+    public int[] genePath;
     public string limbId;
-    public float lastAppliedDelta;   // NEW -- read by Torso.DrainEnergy to cost movement
-
-    private Rigidbody2D rb;
-    private SpriteRenderer sr;
-    private BoxCollider2D col;
-    private HingeJoint2D hinge;
-
-    private HashSet<Collider2D> activeContacts = new HashSet<Collider2D>();
+    public float maxMotorTorque;
+    public BodyPart bodyPart;
+    public float lastAppliedDelta;
+    public float ExecutedIntervalDelta { get; private set; }
     public bool TouchingSelf { get; private set; }
     public bool TouchingOtherCreature { get; private set; }
     public bool TouchingEnvironment { get; private set; }
 
+    private Rigidbody2D rb;
+    private HingeJoint2D hinge;
+    private readonly HashSet<Collider2D> contacts = new HashSet<Collider2D>();
+    private int actionTicksRemaining;
+
     public Rigidbody2D Rigidbody => rb;
-    public HingeJoint2D Hinge => hinge;
-
-    public void Init(Rigidbody2D parentRigidbody, Vector2 parentAttachPoint,
-                      Vector2 worldDirection, int depthValue, CreatureIdentity identity)
-    {
-        rb = GetComponent<Rigidbody2D>();
-        sr = GetComponent<SpriteRenderer>();
-        col = GetComponent<BoxCollider2D>();
-        hinge = GetComponent<HingeJoint2D>();
-
-        bodyPart = gameObject.AddComponent<BodyPart>();
-        bodyPart.identity = identity;
-        limbId = System.Guid.NewGuid().ToString();
-
-        depth = depthValue;
-        dimensions = new Vector2(Random.Range(1.0f, 2.5f), Random.Range(0.3f, 0.6f));
-        hasConnection = Random.value < 0.5f && depth < MaxDepth;
-
-        sr.sprite = BodyUtils.GetSquareSprite();
-        sr.color = Color.Lerp(new Color(0.3f, 0.5f, 0.9f), new Color(0.3f, 0.9f, 0.6f),
-                               depth / (float)MaxDepth);
-        transform.localScale = new Vector3(dimensions.x, dimensions.y, 1f);
-        col.size = Vector2.one;
-        rb.bodyType = RigidbodyType2D.Dynamic;
-
-        float angle = Mathf.Atan2(worldDirection.y, worldDirection.x) * Mathf.Rad2Deg;
-        transform.rotation = Quaternion.Euler(0f, 0f, angle);
-        transform.position = parentAttachPoint + worldDirection * (dimensions.x / 2f);
-
-        hinge.autoConfigureConnectedAnchor = false;
-        hinge.connectedBody = parentRigidbody;
-        hinge.anchor = new Vector2(-0.5f, 0f);
-        hinge.connectedAnchor = parentRigidbody.transform.InverseTransformPoint(parentAttachPoint);
-        hinge.enabled = true;
-
-        JointMotor2D motor = hinge.motor;
-        motor.motorSpeed = 0f;
-        motor.maxMotorTorque = maxMotorTorque;
-        hinge.motor = motor;
-        hinge.useMotor = false;
-
-        if (hasConnection)
-            SpawnChild(identity);
-    }
-
-    private void SpawnChild(CreatureIdentity identity)
-    {
-        Vector2 tipWorld = (Vector2)transform.position + (Vector2)transform.right * (dimensions.x / 2f);
-        Vector2 childDirection = transform.right;
-
-        GameObject go = new GameObject($"Limb_d{depth + 1}");
-        go.transform.SetParent(transform.parent);
-
-        childLimb = go.AddComponent<Limb>();
-        childLimb.Init(rb, tipWorld, childDirection, depth + 1, identity);
-    }
-
-    public List<Limb> GetSubtreeLimbs()
-    {
-        List<Limb> limbs = new List<Limb> { this };
-        if (childLimb != null)
-            limbs.AddRange(childLimb.GetSubtreeLimbs());
-        return limbs;
-    }
-
-    private void OnCollisionEnter2D(Collision2D collision)
-    {
-        activeContacts.Add(collision.collider);
-        RecomputeTouchState();
-    }
-
-    private void OnCollisionExit2D(Collision2D collision)
-    {
-        activeContacts.Remove(collision.collider);
-        RecomputeTouchState();
-    }
-
-    private void RecomputeTouchState()
-    {
-        TouchingSelf = false;
-        TouchingOtherCreature = false;
-        TouchingEnvironment = false;
-
-        foreach (Collider2D contact in activeContacts)
-        {
-            BodyPart otherPart = contact.GetComponent<BodyPart>();
-            if (otherPart == null)
-            {
-                TouchingEnvironment = true;
-                continue;
-            }
-            if (otherPart.identity == bodyPart.identity)
-                TouchingSelf = true;
-            else
-                TouchingOtherCreature = true;
+    public float JointSpeed => hinge == null ? 0f : hinge.jointSpeed;
+    public float MinAngle => hinge == null ? 0f : hinge.limits.min;
+    public float MaxAngle => hinge == null ? 0f : hinge.limits.max;
+    public bool AtJointLimit {
+        get {
+            if (hinge == null || !hinge.useLimits) return false;
+            JointAngleLimits2D limits = hinge.limits;
+            return hinge.jointAngle <= limits.min + 1f || hinge.jointAngle >= limits.max - 1f;
         }
     }
 
-    public Dictionary<string, float> GetLocalInputs()
+    public void InitFromGene(Rigidbody2D parent, Vector2 attachPoint, Vector2 worldDirection,
+                             LimbGeneDto gene, int[] path, CreatureIdentity identity, float phenotypeScale)
     {
-        return new Dictionary<string, float>
-        {
-            { "joint_angle", hinge.jointAngle },
-            { "touch_self", TouchingSelf ? 1f : 0f },
-            { "touch_other_creature", TouchingOtherCreature ? 1f : 0f },
-            { "touch_environment", TouchingEnvironment ? 1f : 0f }
-        };
+        rb = GetComponent<Rigidbody2D>();
+        rb.simulated = true; rb.gravityScale = 1f; rb.constraints = RigidbodyConstraints2D.None;
+        rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
+        rb.mass = Mathf.Clamp(gene.mass, .05f, 10f);
+        rb.inertia = Mathf.Clamp(gene.inertia, .005f, 10f);
+        hinge = GetComponent<HingeJoint2D>();
+        innovationId = gene.innovation_id; parentInnovationId = gene.parent_innovation_id;
+        attachmentSlot = gene.attachment_slot; genePath = path; depth = path.Length;
+        limbId = innovationId.ToString(); dimensions = new Vector2(gene.width, gene.height) * phenotypeScale;
+        maxMotorTorque = gene.max_torque * phenotypeScale;
+        bodyPart = gameObject.AddComponent<BodyPart>(); bodyPart.identity = identity;
+        SpriteRenderer sr = GetComponent<SpriteRenderer>(); sr.sprite = BodyUtils.GetSquareSprite();
+        sr.color = Color.Lerp(new Color(.3f,.5f,.9f), new Color(.3f,.9f,.6f), depth / 5f);
+        BoxCollider2D col = GetComponent<BoxCollider2D>(); col.size = Vector2.one;
+        transform.localScale = new Vector3(dimensions.x, dimensions.y, 1f);
+        transform.position = attachPoint + worldDirection * dimensions.x / 2f;
+        transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(worldDirection.y, worldDirection.x) * Mathf.Rad2Deg);
+        rb.bodyType = RigidbodyType2D.Dynamic;
+        hinge.autoConfigureConnectedAnchor = false; hinge.connectedBody = parent;
+        hinge.anchor = new Vector2(-.5f, 0f); hinge.connectedAnchor = parent.transform.InverseTransformPoint(attachPoint);
+        JointAngleLimits2D limits = hinge.limits; limits.min = gene.min_angle; limits.max = gene.max_angle;
+        hinge.limits = limits; hinge.useLimits = true;
+        JointMotor2D motor = hinge.motor; motor.motorSpeed = 0f; motor.maxMotorTorque = maxMotorTorque;
+        hinge.motor = motor; hinge.useMotor = true;
     }
 
-    public void ApplyDeltaAngle(float deltaDegrees)
+    public Dictionary<string, float> GetLocalInputs() => new Dictionary<string, float> {
+        { "joint_angle", hinge.jointAngle }, { "angular_velocity", hinge.jointSpeed },
+        { "touch_self", TouchingSelf ? 1f : 0f }, { "touch_other_creature", TouchingOtherCreature ? 1f : 0f },
+        { "touch_environment", TouchingEnvironment ? 1f : 0f }
+    };
+
+    public void ApplyIntervalDelta(float deltaDegrees, int controlTicks, float fixedDeltaTime)
     {
-        lastAppliedDelta = deltaDegrees;   // NEW
-        JointMotor2D motor = hinge.motor;
-        motor.motorSpeed = deltaDegrees / Time.fixedDeltaTime;
-        motor.maxMotorTorque = maxMotorTorque;
-        hinge.motor = motor;
-        hinge.useMotor = true;
+        float requested = Mathf.Clamp(deltaDegrees, -NativeCreatureModel.MaximumActionDegrees, NativeCreatureModel.MaximumActionDegrees);
+        if (hinge != null && hinge.useLimits)
+        {
+            JointAngleLimits2D limits = hinge.limits;
+            requested = Mathf.Clamp(requested, limits.min - hinge.jointAngle, limits.max - hinge.jointAngle);
+        }
+        ExecutedIntervalDelta = requested;
+        lastAppliedDelta = ExecutedIntervalDelta / Mathf.Max(1, controlTicks);
+        // A command is a lease, not a one-interval pulse.  The asynchronous
+        // bridge renews it with a newer learned action; a slow response must
+        // not silently change a motor to zero and make a healthy creature look
+        // frozen.
+        actionTicksRemaining = Mathf.Max(1, controlTicks);
+        SetSpeed(lastAppliedDelta / fixedDeltaTime);
+    }
+
+    public void AdvanceMotorTick()
+    {
+        if (actionTicksRemaining > 0) actionTicksRemaining--;
+    }
+
+    private void SetSpeed(float speed) { JointMotor2D motor = hinge.motor; motor.motorSpeed = speed; motor.maxMotorTorque = maxMotorTorque; hinge.motor = motor; }
+    public void DisablePhenotype() {
+        actionTicksRemaining = 0; lastAppliedDelta = 0f; ExecutedIntervalDelta = 0f;
+        if (hinge != null) { hinge.useMotor = false; hinge.enabled = false; }
+        if (rb != null) { rb.linearVelocity = Vector2.zero; rb.angularVelocity = 0f; rb.simulated = false; }
+        foreach (Collider2D collider in GetComponents<Collider2D>()) collider.enabled = false;
+        contacts.Clear(); TouchingSelf = TouchingOtherCreature = TouchingEnvironment = false;
+    }
+    private void OnCollisionEnter2D(Collision2D collision) { contacts.Add(collision.collider); RecomputeTouch(); }
+    private void OnCollisionExit2D(Collision2D collision) { contacts.Remove(collision.collider); RecomputeTouch(); }
+    private void RecomputeTouch() {
+        TouchingSelf = TouchingOtherCreature = TouchingEnvironment = false;
+        contacts.RemoveWhere(other => other == null);
+        foreach (Collider2D other in contacts) {
+            BodyPart part = other.GetComponent<BodyPart>();
+            if (part == null) TouchingEnvironment = true;
+            else if (part.identity == bodyPart.identity) TouchingSelf = true;
+            else TouchingOtherCreature = true;
+        }
     }
 }

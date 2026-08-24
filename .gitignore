@@ -104,3 +104,20 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Live ecosystem runtime/editor artifacts
+__pycache__/
+*.py[cod]
+.vscode/
+adv_creature_2d_testing/python/checkpoints/live_ecosystem_v3.pt
+adv_creature_2d_testing/python/checkpoints/live_ecosystem_v3.pt.tmp
+adv_creature_2d_testing/python/checkpoints/live_ecosystem_v5.pt
+adv_creature_2d_testing/python/checkpoints/live_ecosystem_v5.pt.tmp
+adv_creature_2d_testing/ProjectSettings/AI.Assistant/
+
+# Local Python runtime used by the live ecosystem (never commit downloaded
+# interpreters, virtual environments, or package caches).
+.venv/
+.venv.broken-*/
+.python-runtime/
+.uv-cache/

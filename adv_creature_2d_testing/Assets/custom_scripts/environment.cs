@@ -8,18 +8,22 @@ using UnityEngine;
 public class EnvironmentSpawner : MonoBehaviour
 {
     [Header("Ground")]
-    public float groundWidth = 100f;
-    public float groundThickness = 2f;
+    public float groundWidth = 260f;
+    public float groundThickness = 1f;
     public Vector2 groundCenter = new Vector2(0f, -5f);
 
     [Header("Food")]
     public int foodCount = 10;
-    public float foodSpawnRadius = 20f;
+    public float foodSpawnRadius = 8f;
     public float foodEnergyValue = 20f;
+    public float foodScale = .22f;
+    public float foodMinimumSpawnDistance = 1.8f;
 
     [Header("Predators")]
-    public int predatorCount = 2;
-    public float predatorSpawnRadius = 20f;
+    public int predatorCount = 3;
+    public float predatorSpawnRadius = 120f;
+    public float predatorScale = .35f;
+    public float predatorMinimumSpawnDistance = 28f;
 
     private List<Food> spawnedFood = new List<Food>();
 
@@ -31,7 +35,6 @@ public class EnvironmentSpawner : MonoBehaviour
         // a whole session
         RequireTag("Food");
         RequireTag("Predator");
-        RequireTag("Player");
     }
 
     private void RequireTag(string tag)
@@ -58,6 +61,7 @@ public class EnvironmentSpawner : MonoBehaviour
 
     private void SpawnGround()
     {
+        if (GameObject.Find("Ground") != null) return;
         GameObject ground = new GameObject("Ground");
         ground.transform.position = groundCenter;
 
@@ -70,14 +74,22 @@ public class EnvironmentSpawner : MonoBehaviour
         col.size = Vector2.one;
         // no Rigidbody2D -- a Collider2D with no Rigidbody2D is a static
         // collider in Unity's 2D physics, exactly what ground should be
+        SpawnWall("WorldWallLeft", groundCenter.x - groundWidth / 2f);
+        SpawnWall("WorldWallRight", groundCenter.x + groundWidth / 2f);
+    }
+
+    private void SpawnWall(string name, float x)
+    {
+        if (GameObject.Find(name) != null) return;
+        GameObject wall = new GameObject(name); wall.transform.position = new Vector2(x, groundCenter.y + 20f);
+        BoxCollider2D collider = wall.AddComponent<BoxCollider2D>(); collider.size = new Vector2(1f, 50f);
     }
 
     private void SpawnFood()
     {
         for (int i = 0; i < foodCount; i++)
         {
-            Vector2 pos = groundCenter + Vector2.up * (groundThickness / 2f + 1f)
-                          + Random.insideUnitCircle * foodSpawnRadius;
+            Vector2 pos = InitialFoodPosition(i);
 
             GameObject go = new GameObject("Food");
             go.transform.position = pos;
@@ -86,13 +98,16 @@ public class EnvironmentSpawner : MonoBehaviour
             SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = BodyUtils.GetSquareSprite();
             sr.color = new Color(0.9f, 0.8f, 0.1f);
-            go.transform.localScale = Vector3.one * 0.5f;
+            go.transform.localScale = Vector3.one * foodScale;
 
             CircleCollider2D col = go.AddComponent<CircleCollider2D>();
             col.radius = 0.5f;
+            col.isTrigger = true;
 
             Food food = go.AddComponent<Food>();
             food.energyValue = foodEnergyValue;
+            food.respawnDelay = 5f;
+            food.Init(this);
             spawnedFood.Add(food);
         }
     }
@@ -101,8 +116,7 @@ public class EnvironmentSpawner : MonoBehaviour
     {
         for (int i = 0; i < predatorCount; i++)
         {
-            Vector2 pos = groundCenter + Vector2.up * (groundThickness / 2f + 1f)
-                          + Random.insideUnitCircle * predatorSpawnRadius;
+            Vector2 pos = InitialPredatorPosition(i);
 
             GameObject go = new GameObject("Predator");
             go.transform.position = pos;
@@ -111,6 +125,7 @@ public class EnvironmentSpawner : MonoBehaviour
             SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = BodyUtils.GetSquareSprite();
             sr.color = new Color(0.7f, 0.1f, 0.1f);
+            go.transform.localScale = Vector3.one * predatorScale;
 
             CircleCollider2D col = go.AddComponent<CircleCollider2D>();
             col.radius = 0.5f;
@@ -120,13 +135,71 @@ public class EnvironmentSpawner : MonoBehaviour
         }
     }
 
-    // Not wired to anything yet (item #10 in the inventory) -- kept ready
-    // for whatever eventually manages energy/consumption cycles.
     public void RespawnFood(Food food)
     {
         food.consumed = false;
-        food.gameObject.SetActive(true);
-        food.transform.position = groundCenter + Vector2.up * (groundThickness / 2f + 1f)
-                                   + Random.insideUnitCircle * foodSpawnRadius;
+        food.GetComponent<Collider2D>().enabled = true;
+        food.GetComponent<SpriteRenderer>().enabled = true;
+        food.transform.position = RandomFoodPosition();
+    }
+
+    private Vector2 InitialFoodPosition(int index)
+    {
+        // One visible, reachable food item per starting spawn.  It is far
+        // enough to require locomotion, but inside the eight-unit M1 vision
+        // radius from the first control observation.
+        Vector2 spawn = WorldLayout.CreatureSpawnPosition(index % WorldLayout.MaximumNativeSpawnSlots);
+        float side = index % 2 == 0 ? 1f : -1f;
+        return new Vector2(spawn.x + side * foodMinimumSpawnDistance,
+            groundCenter.y + groundThickness / 2f + foodScale * .5f + .05f);
+    }
+
+    private Vector2 InitialPredatorPosition(int index)
+    {
+        int slot = (index * 3 + 1) % WorldLayout.MaximumNativeSpawnSlots;
+        Vector2 spawn = WorldLayout.CreatureSpawnPosition(slot);
+        float height = groundCenter.y + groundThickness / 2f + predatorScale * .5f + .05f;
+        return new Vector2(spawn.x + (index % 2 == 0 ? 6.5f : -6.5f), height);
+    }
+
+    private Vector2 RandomFoodPosition()
+    {
+        CreatureIdentity[] living = FindObjectsByType<CreatureIdentity>(FindObjectsInactive.Exclude);
+        float height = groundCenter.y + groundThickness / 2f + foodScale * .5f + .05f;
+        for (int attempt = 0; attempt < 32 && living.Length > 0; attempt++)
+        {
+            CreatureIdentity target = living[Random.Range(0, living.Length)];
+            if (target == null || target.torso == null) continue;
+            // Keep the next reward in the creature's vision range.  Food is
+            // not a free pickup: the minimum still requires real translation.
+            float distance = Random.Range(foodMinimumSpawnDistance,
+                foodMinimumSpawnDistance + Mathf.Min(1.2f, foodSpawnRadius));
+            float direction = Random.value < .5f ? -1f : 1f;
+            Vector2 candidate = new Vector2(target.torso.transform.position.x + direction * distance, height);
+            if (Mathf.Abs(candidate.x) < WorldLayout.WorldHalfWidth - 1f &&
+                IsClearOfLivingCreatures(candidate, foodScale + .15f)) return candidate;
+        }
+        return InitialFoodPosition(Random.Range(0, foodCount));
+    }
+
+    private Vector2 RandomDistantPosition(float radius, float minimumDistance, float heightAboveGround)
+    {
+        float height = groundCenter.y + groundThickness / 2f + heightAboveGround;
+        for (int attempt = 0; attempt < 32; attempt++) {
+            Vector2 point = new Vector2(Random.Range(-radius, radius), height);
+            if (WorldLayout.IsFarFromCreatureSpawns(point, minimumDistance) && IsClearOfLivingCreatures(point, minimumDistance)) return point;
+        }
+        // A deterministic edge fallback prevents an infinite spawn loop in a
+        // crowded future map configuration.
+        return new Vector2(-radius, height);
+    }
+
+    private bool IsClearOfLivingCreatures(Vector2 point, float minimumDistance)
+    {
+        float squared = minimumDistance * minimumDistance;
+        foreach (CreatureIdentity identity in FindObjectsByType<CreatureIdentity>(FindObjectsInactive.Exclude))
+            if (identity != null && identity.torso != null && ((Vector2)identity.torso.transform.position - point).sqrMagnitude < squared)
+                return false;
+        return Physics2D.OverlapCircle(point, Mathf.Max(.25f, foodScale)) == null;
     }
 }

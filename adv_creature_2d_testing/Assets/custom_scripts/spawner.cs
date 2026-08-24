@@ -1,88 +1,53 @@
-using System.Collections.Generic;
 using UnityEngine;
 
+// Population creation moved to PythonBridge so every phenotype has a Python genome.
 public class CreatureSpawner : MonoBehaviour
 {
-    [Header("Spawn settings")]
     public bool autoSpawnOnStart = false;
-    public int creaturesToSpawn = 1;
+    public int creaturesToSpawn = 4;
     public float spawnSpacing = 5f;
-
-    void Start()
-    {
-        if (!autoSpawnOnStart) return;
-        Debug.Log($"CreatureSpawner.Start() running. creaturesToSpawn = {creaturesToSpawn}");
-        List<GameObject> result = SpawnCreatures(creaturesToSpawn, Vector2.zero, spawnSpacing);
-        Debug.Log($"SpawnCreatures finished. {result.Count} creature(s) actually in the returned list.");
-    }
-
-    public List<GameObject> SpawnCreatures(int count, Vector2 origin, float spacing)
-    {
-        List<GameObject> spawned = new List<GameObject>();
-        for (int i = 0; i < count; i++)
-        {
-            Vector2 spawnPos = origin + new Vector2(i * spacing, 0f);
-            try
-            {
-                GameObject creature = SpawnCreature(spawnPos);
-                spawned.Add(creature);
-                string shortId = creature.GetComponent<CreatureIdentity>().creatureId.Substring(0, 8);
-                Debug.Log($"  Creature {i} spawned OK: {creature.name} (id {shortId})");
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"CreatureSpawner: creature {i} failed to spawn at {spawnPos} -- {e}");
-            }
-        }
-
-        if (spawned.Count < count)
-            Debug.LogWarning($"CreatureSpawner: requested {count}, only {spawned.Count} spawned successfully.");
-
-        return spawned;
-    }
-
-    public GameObject SpawnCreature(Vector2 position)
-    {
-        GameObject root = new GameObject("Creature");
-        root.transform.position = position;
-
-        CreatureIdentity identity = root.AddComponent<CreatureIdentity>();
-        identity.creatureId = System.Guid.NewGuid().ToString();
-        identity.speciesId = "default_species";
-
-        GameObject torsoGO = new GameObject("Torso");
-        torsoGO.transform.SetParent(root.transform);
-        torsoGO.transform.position = position;
-
-        Torso torso = torsoGO.AddComponent<Torso>();
-        torso.Init(identity);
-        identity.torso = torso;   // NEW
-
-        CreatureBrain brain = torsoGO.AddComponent<CreatureBrain>();
-        brain.Init(torso, torso.GetAllLimbs());
-
-        return root;
-    }
 }
 
 public static class BodyUtils
 {
-    private static Sprite _squareSprite;
+    private static Sprite square;
+    public static Sprite GetSquareSprite() {
+        if (square != null) return square;
+        Texture2D texture = new Texture2D(1, 1); texture.SetPixel(0, 0, Color.white); texture.Apply();
+        square = Sprite.Create(texture, new Rect(0, 0, 1, 1), new Vector2(.5f,.5f), 1f); return square;
+    }
+    public static readonly Vector2[] SlotDirections = {
+        Vector2.up, Vector2.down, Vector2.left, Vector2.right,
+        new Vector2(1,1).normalized, new Vector2(1,-1).normalized,
+        new Vector2(-1,1).normalized, new Vector2(-1,-1).normalized
+    };
+}
 
-    public static Sprite GetSquareSprite()
+// Shared procedural-world constants. Keeping the spawn grid and environment
+// extents in one place prevents respawned creatures, food, and predators from
+// drifting back into a small centre-of-map cluster.
+public static class WorldLayout
+{
+    public const float WorldHalfWidth = 130f;
+    public const float GroundTop = -4.5f;
+    public const int SpawnColumns = 5;
+    public const int MaximumNativeSpawnSlots = 10;
+    public const float SpawnColumnSpacing = 44f;
+    public const float SpawnRowSpacing = 12f;
+
+    public static Vector2 CreatureSpawnPosition(int slot)
     {
-        if (_squareSprite != null) return _squareSprite;
-        Texture2D tex = new Texture2D(1, 1);
-        tex.SetPixel(0, 0, Color.white);
-        tex.Apply();
-        _squareSprite = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
-        return _squareSprite;
+        int column = slot % SpawnColumns;
+        int row = slot / SpawnColumns;
+        return new Vector2(-88f + column * SpawnColumnSpacing, GroundTop + 2.25f + row * SpawnRowSpacing);
     }
 
-    public static readonly Vector2[] SlotDirections =
+    public static bool IsFarFromCreatureSpawns(Vector2 point, float minimumDistance)
     {
-        Vector2.up, Vector2.down, Vector2.left, Vector2.right,
-        new Vector2(1, 1).normalized, new Vector2(1, -1).normalized,
-        new Vector2(-1, 1).normalized, new Vector2(-1, -1).normalized
-    };
+        float minimumSqrDistance = minimumDistance * minimumDistance;
+        for (int slot = 0; slot < MaximumNativeSpawnSlots; slot++)
+            if ((point - CreatureSpawnPosition(slot)).sqrMagnitude < minimumSqrDistance)
+                return false;
+        return true;
+    }
 }

@@ -1,0 +1,19 @@
+{
+  "name": "LiveEcosystem.PlayModeTests",
+  "rootNamespace": "",
+  "references": [
+    "LiveEcosystem.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

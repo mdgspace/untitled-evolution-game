@@ -1,42 +1,26 @@
-using System.Collections.Generic;
 using UnityEngine;
 
+[DisallowMultipleComponent]
+[RequireComponent(typeof(NativeEcosystemController), typeof(EnvironmentSpawner))]
+[RequireComponent(typeof(EcosystemTelemetryHUD))]
+// The surviving scene object is the composition root for the live ecosystem.
+// The native controller owns the runtime ecosystem. Python components remain
+// in the project for legacy inspection but are not required by this scene.
 public class FixedSpawner : MonoBehaviour
 {
-    [Header("Spawn Settings")]
-    public Vector2 spawnPosition = Vector2.zero;
-    public string fixedCreatureId = "fixed_creature_0";
-
-    void Start()
+    private void Awake()
     {
-        Debug.Log($"FixedSpawner: Spawning deterministic creature '{fixedCreatureId}' at {spawnPosition}");
-        SpawnFixedCreature(spawnPosition);
-    }
-
-    public GameObject SpawnFixedCreature(Vector2 position)
-    {
-        GameObject root = new GameObject("FixedCreature");
-        root.transform.position = position;
-
-        CreatureIdentity identity = root.AddComponent<CreatureIdentity>();
-        identity.creatureId = fixedCreatureId;
-        identity.speciesId = "fixed_species";
-
-        GameObject torsoGO = new GameObject("Torso");
-        torsoGO.transform.SetParent(root.transform);
-        torsoGO.transform.position = position;
-
-        Torso torso = torsoGO.AddComponent<Torso>();
-        
-        // Initialize torso with fixed dimensions (1.5 x 1.5)
-        torso.dimensions = new Vector2(1.5f, 1.5f);
-        torso.Init(identity);
-        identity.torso = torso;
-
-        CreatureBrain brain = torsoGO.AddComponent<CreatureBrain>();
-        brain.Init(torso, torso.GetAllLimbs());
-
-        Debug.Log($"FixedSpawner: Successfully spawned fixed creature with {torso.GetAllLimbs().Count} limbs.");
-        return root;
+        Application.runInBackground = true;
+        PythonBridge legacyBridge = GetComponent<PythonBridge>();
+        if (legacyBridge != null) legacyBridge.enabled = false;
+        PythonProcessManager legacyProcess = GetComponent<PythonProcessManager>();
+        if (legacyProcess != null) legacyProcess.enabled = false;
+        Physics2D.simulationMode = SimulationMode2D.FixedUpdate;
+        if (GetComponent<EcosystemTelemetryHUD>() == null) gameObject.AddComponent<EcosystemTelemetryHUD>();
+        if (GetComponent<NativeEcosystemController>() == null) gameObject.AddComponent<NativeEcosystemController>();
+        if (FindAnyObjectByType<EnvironmentSpawner>() == null) gameObject.AddComponent<EnvironmentSpawner>();
+        Camera observerCamera = FindAnyObjectByType<Camera>();
+        if (observerCamera != null && observerCamera.GetComponent<ObserverCamera>() == null)
+            observerCamera.gameObject.AddComponent<ObserverCamera>();
     }
 }
