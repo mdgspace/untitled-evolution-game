@@ -11,10 +11,10 @@ public class Torso : MonoBehaviour
     // Pay for actual angular travel, not merely requested actions.  This makes
     // rapid oscillation expensive even when it fails to translate the torso.
     public float movementEnergyPerDegree = .01f;
-    // At the fixed 50 Hz simulation rate, .2 seconds is ten physics ticks.
-    // A stationary torso must quickly either translate or die and backfill.
-    public float idleEnergyPerSecond = 20f;
-    public float idleAfterSeconds = .4f;
+    // Still much larger than the baseline cost, but long enough for a new
+    // controller to receive multiple decisions and explore before starvation.
+    public float idleEnergyPerSecond = 2.5f;
+    public float idleAfterSeconds = 4f;
     [Range(.1f, 1f)] public float phenotypeScale = .45f;
     public BodyPart bodyPart;
     public List<Limb> childLimbs = new List<Limb>();
@@ -25,8 +25,10 @@ public class Torso : MonoBehaviour
     private float baselineCost;
     private float movementCost;
     private float idleCost;
+    private readonly HashSet<Collider2D> groundContacts = new HashSet<Collider2D>();
     public Rigidbody2D Rigidbody => rb;
     public float FoodGain => foodGain;
+    public bool TouchingGround => groundContacts.Count > 0;
 
     public void InitFromGenome(CreatureIdentity identity, BodyGenomeDto genome)
     {
@@ -41,8 +43,6 @@ public class Torso : MonoBehaviour
         transform.localScale = new Vector3(dimensions.x, dimensions.y, 1f);
         bodyPart = gameObject.AddComponent<BodyPart>(); bodyPart.identity = identity;
         Dictionary<int, Rigidbody2D> parents = new Dictionary<int, Rigidbody2D> { { 0, rb } };
-        Dictionary<int, Vector2> parentDimensions = new Dictionary<int, Vector2> { { 0, dimensions } };
-        Dictionary<int, Vector2> parentPositions = new Dictionary<int, Vector2> { { 0, transform.position } };
         Dictionary<int, int[]> paths = new Dictionary<int, int[]> { { 0, new int[0] } };
         List<LimbGeneDto> pending = new List<LimbGeneDto>(genome.limbs);
         while (pending.Count > 0) {
@@ -51,17 +51,26 @@ public class Torso : MonoBehaviour
                 LimbGeneDto gene = pending[i];
                 if (!gene.enabled || !parents.ContainsKey(gene.parent_innovation_id)) { if (!gene.enabled) pending.RemoveAt(i); continue; }
                 Vector2 dir = BodyUtils.SlotDirections[Mathf.Clamp(gene.attachment_slot, 0, BodyUtils.SlotDirections.Length - 1)];
-                Vector2 attach = parentPositions[gene.parent_innovation_id] + dir * Mathf.Max(parentDimensions[gene.parent_innovation_id].x, parentDimensions[gene.parent_innovation_id].y) / 2f;
+                Vector2 attach = AttachmentPoint(parents[gene.parent_innovation_id], dir);
                 GameObject go = new GameObject("Limb_" + gene.innovation_id); go.transform.SetParent(transform.parent);
                 Limb limb = go.AddComponent<Limb>(); int[] parentPath = paths[gene.parent_innovation_id];
                 int[] path = new int[parentPath.Length + 1]; parentPath.CopyTo(path, 0); path[path.Length - 1] = gene.attachment_slot;
                 limb.InitFromGene(parents[gene.parent_innovation_id], attach, dir, gene, path, identity, phenotypeScale);
-                childLimbs.Add(limb); parents[gene.innovation_id] = limb.Rigidbody; parentDimensions[gene.innovation_id] = limb.dimensions;
-                parentPositions[gene.innovation_id] = limb.transform.position; paths[gene.innovation_id] = path;
+                childLimbs.Add(limb); parents[gene.innovation_id] = limb.Rigidbody; paths[gene.innovation_id] = path;
                 pending.RemoveAt(i); built = true;
             }
             if (!built) break; // malformed orphan gene: Python validation should already have removed it.
         }
+    }
+
+    // The BoxCollider uses a local [-.5,.5] rectangle.  Projecting the chosen
+    // world direction into that space gives a cheap, exact-on-the-rectangle
+    // attachment point even when the parent limb is already rotated.
+    private static Vector2 AttachmentPoint(Rigidbody2D parent, Vector2 worldDirection)
+    {
+        Vector2 localDirection = parent.transform.InverseTransformDirection(worldDirection).normalized;
+        float divisor = Mathf.Max(Mathf.Abs(localDirection.x), Mathf.Abs(localDirection.y));
+        return divisor <= .0001f ? parent.position : parent.transform.TransformPoint(localDirection * (.5f / divisor));
     }
 
     public List<Limb> GetAllLimbs() => new List<Limb>(childLimbs);
@@ -99,6 +108,13 @@ public class Torso : MonoBehaviour
     {
         if (rb != null) { rb.linearVelocity = Vector2.zero; rb.angularVelocity = 0f; rb.simulated = false; }
         foreach (Collider2D collider in GetComponents<Collider2D>()) collider.enabled = false;
+    }
+    private void OnCollisionEnter2D(Collision2D collision) { TrackGroundContact(collision.collider, true); }
+    private void OnCollisionExit2D(Collision2D collision) { TrackGroundContact(collision.collider, false); }
+    private void TrackGroundContact(Collider2D collider, bool entering)
+    {
+        if (collider == null || collider.gameObject.name != "Ground") return;
+        if (entering) groundContacts.Add(collider); else groundContacts.Remove(collider);
     }
     private struct VisionReadout { public bool food, predator; public Vector2 foodRel, predatorRel; }
     private VisionReadout ScanVision() {

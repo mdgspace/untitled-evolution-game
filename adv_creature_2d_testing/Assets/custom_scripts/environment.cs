@@ -19,13 +19,32 @@ public class EnvironmentSpawner : MonoBehaviour
     public float foodScale = .22f;
     public float foodMinimumSpawnDistance = 1.8f;
 
+    [Header("Native training routine")]
+    public bool trainingRoutineEnabled = true;
+    public float trainingEpisodeSeconds = 10f;
+    public int trainingFoodPerCreature = 3;
+    public float trainingFoodMinimumDistance = 5f;
+    public float trainingFoodMaximumDistance = 14f;
+    public float highEnergyFoodValue = 150f;
+    public float highEnergyFoodSpeed = 3.5f;
+
     [Header("Predators")]
-    public int predatorCount = 3;
+    // Keep a single predator in the native training arena. Predators remain
+    // present as a safety/avoidance signal, but do not dominate early body
+    // learning or remove most candidates before M2 has a useful policy.
+    public int predatorCount = 1;
     public float predatorSpawnRadius = 120f;
     public float predatorScale = .35f;
     public float predatorMinimumSpawnDistance = 28f;
+    public float trainingPredatorMinimumDistance = 24f;
+    public float trainingPredatorMaximumDistance = 34f;
+    public float predatorChaseSpeed = .25f;
 
     private List<Food> spawnedFood = new List<Food>();
+    private List<HighEnergyFood> spawnedHighEnergyFood = new List<HighEnergyFood>();
+    private List<Predator> spawnedPredators = new List<Predator>();
+    private System.Random trainingRandom = new System.Random(7301);
+    private float nextTrainingEpisode;
 
     private void Awake()
     {
@@ -57,6 +76,15 @@ public class EnvironmentSpawner : MonoBehaviour
         SpawnGround();
         SpawnFood();
         SpawnPredators();
+        EnsureTrainingPools();
+        nextTrainingEpisode = Time.time + trainingEpisodeSeconds;
+    }
+
+    private void FixedUpdate()
+    {
+        if (!trainingRoutineEnabled || Time.time < nextTrainingEpisode) return;
+        nextTrainingEpisode += Mathf.Max(.5f, trainingEpisodeSeconds);
+        RunTrainingEpisode();
     }
 
     private void SpawnGround()
@@ -90,26 +118,16 @@ public class EnvironmentSpawner : MonoBehaviour
         for (int i = 0; i < foodCount; i++)
         {
             Vector2 pos = InitialFoodPosition(i);
-
-            GameObject go = new GameObject("Food");
-            go.transform.position = pos;
-            go.tag = "Food";
-
-            SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = BodyUtils.GetSquareSprite();
-            sr.color = new Color(0.9f, 0.8f, 0.1f);
-            go.transform.localScale = Vector3.one * foodScale;
-
-            CircleCollider2D col = go.AddComponent<CircleCollider2D>();
-            col.radius = 0.5f;
-            col.isTrigger = true;
-
-            Food food = go.AddComponent<Food>();
-            food.energyValue = foodEnergyValue;
-            food.respawnDelay = 5f;
-            food.Init(this);
-            spawnedFood.Add(food);
+            spawnedFood.Add(CreateFood(pos));
         }
+    }
+
+    private Food CreateFood(Vector2 position)
+    {
+        GameObject go = new GameObject("Food"); go.transform.position = position; go.tag = "Food";
+        SpriteRenderer sr = go.AddComponent<SpriteRenderer>(); sr.sprite = BodyUtils.GetSquareSprite(); sr.color = new Color(0.9f, 0.8f, 0.1f); go.transform.localScale = Vector3.one * foodScale;
+        CircleCollider2D col = go.AddComponent<CircleCollider2D>(); col.radius = 0.5f; col.isTrigger = true;
+        Food food = go.AddComponent<Food>(); food.energyValue = foodEnergyValue; food.respawnDelay = 5f; food.Init(this); return food;
     }
 
     private void SpawnPredators()
@@ -131,9 +149,61 @@ public class EnvironmentSpawner : MonoBehaviour
             col.radius = 0.5f;
             col.isTrigger = true;
 
-            go.AddComponent<Predator>();
+            Predator predator = go.AddComponent<Predator>(); predator.chaseSpeed = predatorChaseSpeed; spawnedPredators.Add(predator);
         }
     }
+
+    private void EnsureTrainingPools()
+    {
+        int creatureCount = Mathf.Max(1, FindObjectsByType<CreatureIdentity>(FindObjectsInactive.Exclude).Length);
+        int desiredFood = creatureCount * Mathf.Max(1, trainingFoodPerCreature);
+        while (spawnedFood.Count < desiredFood) spawnedFood.Add(CreateFood(InitialFoodPosition(spawnedFood.Count)));
+        while (spawnedHighEnergyFood.Count < creatureCount)
+        {
+            GameObject go = new GameObject("HighEnergyFood"); go.tag = "Food";
+            go.transform.localScale = Vector3.one * (foodScale * 1.35f);
+            SpriteRenderer sr = go.AddComponent<SpriteRenderer>(); sr.sprite = BodyUtils.GetSquareSprite(); sr.color = new Color(0.15f, 0.95f, 0.95f);
+            CircleCollider2D col = go.AddComponent<CircleCollider2D>(); col.radius = 0.5f; col.isTrigger = true;
+            HighEnergyFood food = go.AddComponent<HighEnergyFood>(); food.energyValue = highEnergyFoodValue; food.escapeSpeed = highEnergyFoodSpeed; food.surfaceY = groundCenter.y + groundThickness / 2f + foodScale * .5f + .05f; food.PlaceAt(InitialFoodPosition(spawnedHighEnergyFood.Count)); spawnedHighEnergyFood.Add(food);
+        }
+    }
+
+    private void RunTrainingEpisode()
+    {
+        CreatureIdentity[] living = FindObjectsByType<CreatureIdentity>(FindObjectsInactive.Exclude);
+        if (living.Length == 0) return;
+        EnsureTrainingPools();
+        float foodHeight = groundCenter.y + groundThickness / 2f + foodScale * .5f + .05f;
+        for (int i = 0; i < spawnedFood.Count; i++)
+        {
+            CreatureIdentity target = living[i % living.Length];
+            float distance = Range(trainingFoodMinimumDistance, trainingFoodMaximumDistance);
+            float side = trainingRandom.Next(2) == 0 ? -1f : 1f;
+            Vector2 point = new Vector2(target.torso.transform.position.x + side * distance, foodHeight);
+            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldHalfWidth + 2f, WorldLayout.WorldHalfWidth - 2f);
+            spawnedFood[i].PlaceAt(point);
+        }
+        for (int i = 0; i < spawnedHighEnergyFood.Count; i++)
+        {
+            CreatureIdentity target = living[i % living.Length];
+            float distance = Range(trainingFoodMaximumDistance, trainingFoodMaximumDistance + 8f);
+            float side = trainingRandom.Next(2) == 0 ? -1f : 1f;
+            Vector2 point = new Vector2(target.torso.transform.position.x + side * distance, foodHeight);
+            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldHalfWidth + 2f, WorldLayout.WorldHalfWidth - 2f);
+            spawnedHighEnergyFood[i].PlaceAt(point);
+        }
+        for (int i = 0; i < spawnedPredators.Count; i++)
+        {
+            CreatureIdentity target = living[(i + 1) % living.Length];
+            float distance = Range(trainingPredatorMinimumDistance, trainingPredatorMaximumDistance);
+            float side = trainingRandom.Next(2) == 0 ? -1f : 1f;
+            Vector2 point = new Vector2(target.torso.transform.position.x + side * distance, foodHeight + .15f);
+            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldHalfWidth + 3f, WorldLayout.WorldHalfWidth - 3f);
+            spawnedPredators[i].PlaceAt(point);
+        }
+    }
+
+    private float Range(float minimum, float maximum) => minimum + (float)trainingRandom.NextDouble() * (maximum - minimum);
 
     public void RespawnFood(Food food)
     {
@@ -159,7 +229,7 @@ public class EnvironmentSpawner : MonoBehaviour
         int slot = (index * 3 + 1) % WorldLayout.MaximumNativeSpawnSlots;
         Vector2 spawn = WorldLayout.CreatureSpawnPosition(slot);
         float height = groundCenter.y + groundThickness / 2f + predatorScale * .5f + .05f;
-        return new Vector2(spawn.x + (index % 2 == 0 ? 6.5f : -6.5f), height);
+        return new Vector2(spawn.x + (index % 2 == 0 ? predatorMinimumSpawnDistance : -predatorMinimumSpawnDistance), height);
     }
 
     private Vector2 RandomFoodPosition()

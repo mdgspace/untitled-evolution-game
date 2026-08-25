@@ -462,7 +462,7 @@ MonoBehaviour:
   foodEnergyValue: 20
   foodScale: 0.22
   foodMinimumSpawnDistance: 1.8
-  predatorCount: 3
+  predatorCount: 1
   predatorSpawnRadius: 120
   predatorScale: 0.35
   predatorMinimumSpawnDistance: 28

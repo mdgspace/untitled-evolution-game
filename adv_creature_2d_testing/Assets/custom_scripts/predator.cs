@@ -5,6 +5,7 @@ using UnityEngine;
 public class Predator : MonoBehaviour
 {
     public float patrolSpeed;
+    public float chaseSpeed = .25f;
     public int killContactTicks = 3;
     private Vector2 direction;
     // Track collider counts, not just identities: a torso/limb can have several
@@ -20,8 +21,10 @@ public class Predator : MonoBehaviour
         consecutive.Remove(identity);
     }
 
+    public bool IsOverlapping(CreatureIdentity identity) => identity != null && overlapCounts.TryGetValue(identity, out int count) && count > 0;
+
     private void Start() { direction = Random.insideUnitCircle.normalized; GetComponent<CircleCollider2D>().isTrigger = true; }
-    private void Update() { if (patrolSpeed > 0f) transform.position += (Vector3)(direction * patrolSpeed * Time.deltaTime); }
+    public void PlaceAt(Vector2 position) { transform.position = position; overlapCounts.Clear(); consecutive.Clear(); }
     private void OnTriggerEnter2D(Collider2D other)
     {
         BodyPart part = other.GetComponent<BodyPart>();
@@ -39,6 +42,15 @@ public class Predator : MonoBehaviour
     }
     private void FixedUpdate()
     {
+        CreatureIdentity nearest = null; float nearestSqr = float.PositiveInfinity;
+        foreach (CreatureIdentity identity in FindObjectsByType<CreatureIdentity>(FindObjectsInactive.Exclude))
+        {
+            if (identity == null || identity.torso == null || identity.torso.GetComponent<CreatureBrain>()?.IsDead == true) continue;
+            float distance = ((Vector2)identity.torso.transform.position - (Vector2)transform.position).sqrMagnitude;
+            if (distance < nearestSqr) { nearestSqr = distance; nearest = identity; }
+        }
+        Vector2 velocity = nearest == null ? direction * patrolSpeed : ((Vector2)nearest.torso.transform.position - (Vector2)transform.position).normalized * chaseSpeed;
+        if (velocity.sqrMagnitude > 0f) transform.position += (Vector3)(velocity * Time.fixedDeltaTime);
         foreach (CreatureIdentity identity in new List<CreatureIdentity>(overlapCounts.Keys))
             if (identity == null || identity.torso == null) { overlapCounts.Remove(identity); consecutive.Remove(identity); }
         foreach (CreatureIdentity identity in new List<CreatureIdentity>(consecutive.Keys))

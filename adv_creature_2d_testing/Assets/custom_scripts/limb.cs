@@ -45,6 +45,7 @@ public class Limb : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         rb.simulated = true; rb.gravityScale = 1f; rb.constraints = RigidbodyConstraints2D.None;
         rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
+        rb.interpolation = RigidbodyInterpolation2D.Interpolate; rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         rb.mass = Mathf.Clamp(gene.mass, .05f, 10f);
         rb.inertia = Mathf.Clamp(gene.inertia, .005f, 10f);
         hinge = GetComponent<HingeJoint2D>();
@@ -60,7 +61,8 @@ public class Limb : MonoBehaviour
         transform.position = attachPoint + worldDirection * dimensions.x / 2f;
         transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(worldDirection.y, worldDirection.x) * Mathf.Rad2Deg);
         rb.bodyType = RigidbodyType2D.Dynamic;
-        hinge.autoConfigureConnectedAnchor = false; hinge.connectedBody = parent;
+        hinge.autoConfigureConnectedAnchor = false; hinge.connectedBody = parent; hinge.enableCollision = false;
+        hinge.breakForce = float.PositiveInfinity; hinge.breakTorque = float.PositiveInfinity;
         hinge.anchor = new Vector2(-.5f, 0f); hinge.connectedAnchor = parent.transform.InverseTransformPoint(attachPoint);
         JointAngleLimits2D limits = hinge.limits; limits.min = gene.min_angle; limits.max = gene.max_angle;
         hinge.limits = limits; hinge.useLimits = true;

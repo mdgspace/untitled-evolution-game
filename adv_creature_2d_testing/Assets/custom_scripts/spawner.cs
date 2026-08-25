@@ -32,7 +32,7 @@ public static class WorldLayout
     public const float GroundTop = -4.5f;
     public const int SpawnColumns = 5;
     public const int MaximumNativeSpawnSlots = 10;
-    public const float SpawnColumnSpacing = 44f;
+    public const float SpawnColumnSpacing = 56f;
     public const float SpawnRowSpacing = 12f;
 
     public static Vector2 CreatureSpawnPosition(int slot)

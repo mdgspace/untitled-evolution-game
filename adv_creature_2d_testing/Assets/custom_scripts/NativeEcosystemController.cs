@@ -9,9 +9,9 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class NativeEcosystemController : MonoBehaviour
 {
-    private const float MinimumSpawnSeparation = 20f;
+    private const float MinimumSpawnSeparation = 32f;
     public int populationTarget = 4;
-    public int controlIntervalTicks = 2;
+    public int controlIntervalTicks = NativeCreatureModel.ActionTicks;
     public float evolutionIntervalSeconds = 10f;
     public float checkpointIntervalSeconds = 30f;
     public bool loadCheckpointOnStart = true;
@@ -23,6 +23,15 @@ public sealed class NativeEcosystemController : MonoBehaviour
     public int SpeciesCount => agents.Select(a => a.identity.speciesId).Distinct().Count();
     public float LastM3Loss { get; private set; }
     public float LastM2Loss { get; private set; }
+    public float LastGroundPenalty { get; private set; }
+    public int GoalTicksRemaining { get; private set; }
+    public int PlannerRollouts { get; private set; }
+    public float RefinementGain { get; private set; }
+    public float PredictedGroundRisk { get; private set; }
+    public float PredictedPredatorRisk { get; private set; }
+    public float ActualGroundRisk { get; private set; }
+    public float ActualPredatorRisk { get; private set; }
+    public float PlannerMilliseconds { get; private set; }
     public float LastActionMagnitude { get; private set; }
     public float MeanM1EnergyFitness => agents.Count == 0 ? 0f : agents.Average(agent => agent.m1EnergyFitness);
     public int DynamicsReplaySamples => agents.Sum(agent => agent.model.DynamicsReplayCount);
@@ -34,11 +43,14 @@ public sealed class NativeEcosystemController : MonoBehaviour
     public float SecondsUntilCheckpoint => Mathf.Max(0f, nextCheckpoint - Time.time);
     public string LastCheckpointSavedAt { get; private set; } = "Never";
     public int ActiveControlCount => agents.Count(agent => agent.brain != null && !agent.brain.IsDead && agent.brain.LastAppliedTick >= 0);
-    public int MovingCreatureCount => agents.Count(agent => agent.identity != null && agent.identity.torso != null && !agent.brain.IsDead && agent.identity.torso.Rigidbody != null && agent.identity.torso.Rigidbody.linearVelocity.magnitude >= .05f);
+    public int DeadCreatureCount => agents.Count(agent => agent.brain == null || agent.brain.IsDead);
+    public int MovingCreatureCount => agents.Count(agent => agent.isSustainedMoving);
     public float MeanRootSpeed => agents.Where(agent => agent.identity != null && agent.identity.torso != null && agent.identity.torso.Rigidbody != null && !agent.brain.IsDead).Select(agent => agent.identity.torso.Rigidbody.linearVelocity.magnitude).DefaultIfEmpty(0f).Average();
     public float MeanJointSpeed => agents.Where(agent => agent.brain != null && !agent.brain.IsDead).Select(agent => agent.brain.MeanJointSpeed).DefaultIfEmpty(0f).Average();
     public int ControlFailures { get; private set; }
     public string LastControlError { get; private set; } = "";
+    public int ImmediateReplacementCount { get; private set; }
+    public int LastReplacementTick { get; private set; } = -1;
 
     private readonly List<NativeAgent> agents = new List<NativeAgent>();
     private List<NativeBodySpecies> species = new List<NativeBodySpecies>();
@@ -62,6 +74,13 @@ public sealed class NativeEcosystemController : MonoBehaviour
         public float m1EnergyFitness;
         public float previousEnergy;
         public bool deathRecorded;
+        public bool transitionPending;
+        public int transitionDueTick;
+        public Vector2 transitionStartPosition;
+        public float transitionStartEnergy;
+        public int movingEvidenceTicks;
+        public int stillEvidenceTicks;
+        public bool isSustainedMoving;
     }
 
     private void Awake()
@@ -99,7 +118,7 @@ public sealed class NativeEcosystemController : MonoBehaviour
         {
             controlStep++;
             foreach (NativeAgent agent in agents.ToArray())
-                try { StepAgent(agent, controlStep); }
+                try { CompleteTransitionIfDue(agent); StepAgent(agent, controlStep); }
                 catch (Exception exception)
                 {
                     ControlFailures++;
@@ -111,6 +130,9 @@ public sealed class NativeEcosystemController : MonoBehaviour
                 }
         }
         foreach (NativeAgent agent in agents.ToArray()) if (agent.brain != null) agent.brain.FixedStep();
+        UpdateMotionEvidence();
+        ReplaceDeadCreaturesImmediately();
+        if (agents.Count > 0 && agents.All(agent => agent.brain == null || agent.brain.IsDead)) RecoverFromExtinction();
         if (Time.time >= nextEvolution) { nextEvolution += evolutionIntervalSeconds; Evolve(); }
     }
 
@@ -120,15 +142,6 @@ public sealed class NativeEcosystemController : MonoBehaviour
         {
             if (agent.identity == null || agent.identity.torso == null) continue;
             Vector2 current = agent.identity.torso.transform.position;
-            Vector2 displacement = current - agent.previousPosition;
-            if (agent.model.TrainDynamics(displacement))
-            {
-                sharedWeights.CopyM3From(agent.model.Weights);
-                foreach (NativeAgent other in agents) if (other != agent) other.model.CopyM3From(sharedWeights);
-                SnapshotVersion++;
-            }
-            agent.model.TrainPolicyMinibatch(8);
-            LastM3Loss = agent.model.LastM3Loss;
             float energy = agent.identity.torso.energy;
             agent.m1EnergyFitness += energy - agent.previousEnergy;
             agent.previousEnergy = energy;
@@ -136,6 +149,36 @@ public sealed class NativeEcosystemController : MonoBehaviour
             if (agent.brain.IsDead && !agent.deathRecorded) { float penalty = agent.brain.DeathReason == "predator" ? 100f : 25f; agent.deathPenalty += penalty; agent.m1EnergyFitness -= penalty; agent.deathRecorded = true; }
         }
         if (Time.time >= nextCheckpoint) { nextCheckpoint += checkpointIntervalSeconds; SaveCheckpoint(); }
+    }
+
+    private void UpdateMotionEvidence()
+    {
+        foreach (NativeAgent agent in agents)
+        {
+            if (agent.brain == null || agent.brain.IsDead || agent.identity == null || agent.identity.torso == null || agent.identity.torso.Rigidbody == null)
+            {
+                agent.movingEvidenceTicks = 0;
+                agent.stillEvidenceTicks = 0;
+                agent.isSustainedMoving = false;
+                continue;
+            }
+
+            float rootSpeed = agent.identity.torso.Rigidbody.linearVelocity.magnitude;
+            const float enterSpeed = .08f;
+            const float leaveSpeed = .025f;
+            if (agent.isSustainedMoving)
+            {
+                if (rootSpeed <= leaveSpeed) agent.stillEvidenceTicks++;
+                else agent.stillEvidenceTicks = 0;
+                if (agent.stillEvidenceTicks >= 4) agent.isSustainedMoving = false;
+            }
+            else
+            {
+                if (rootSpeed >= enterSpeed) agent.movingEvidenceTicks++;
+                else agent.movingEvidenceTicks = 0;
+                if (agent.movingEvidenceTicks >= 3) agent.isSustainedMoving = true;
+            }
+        }
     }
 
     private void StepAgent(NativeAgent agent, int currentControlStep)
@@ -155,18 +198,53 @@ public sealed class NativeEcosystemController : MonoBehaviour
         global[6] = raw["rotation_sin"]; global[7] = raw["rotation_cos"]; global[8] = raw["sees_food"]; global[9] = raw["rel_food_x"] / 20f; global[10] = raw["rel_food_y"] / 20f;
         global[11] = raw["sees_predator"]; global[12] = raw["rel_predator_x"] / 20f; global[13] = raw["rel_predator_y"] / 20f;
         Limb[] limbs = agent.brain.allLimbs.Where(limb => limb != null).Take(NativeCreatureModel.MaxLimbs).ToArray();
-        float[] actions = agent.model.Infer(global, limbs, agent.brain.CurrentGoal, currentControlStep);
+        bool predatorContact = IsPredatorOverlapping(agent.identity);
+        long planningStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+        NativeActionPlan plan = agent.model.PlanActions(global, limbs, currentControlStep, agent.identity.torso.TouchingGround, agent.identity.torso.energy / Mathf.Max(1f, agent.identity.torso.maxEnergy), predatorContact);
+        PlannerMilliseconds = (float)((System.Diagnostics.Stopwatch.GetTimestamp() - planningStarted) * 1000d / System.Diagnostics.Stopwatch.Frequency);
+        float[] actions = plan.FirstAction();
         if (actions.Any(value => float.IsNaN(value) || float.IsInfinity(value)))
         {
             ControlFailures++;
             LastControlError = agent.identity.creatureId + ": non-finite action repaired";
             Debug.LogError("Repairing non-finite native action for creature " + agent.identity.creatureId);
             agent.model.RepairFrom(sharedWeights);
-            actions = agent.model.Infer(global, limbs, agent.brain.CurrentGoal, currentControlStep);
+            plan = agent.model.PlanActions(global, limbs, currentControlStep, agent.identity.torso.TouchingGround, agent.identity.torso.energy / Mathf.Max(1f, agent.identity.torso.maxEnergy), predatorContact);
+            actions = plan.FirstAction();
         }
         LastM2Loss = agent.model.LastM2Loss;
+        LastGroundPenalty = agent.model.LastGroundPenalty;
+        GoalTicksRemaining = agent.model.GoalTicksRemaining;
+        PlannerRollouts = agent.model.LastPlannerRollouts;
+        RefinementGain = agent.model.LastRefinementGain;
+        PredictedGroundRisk = agent.model.LastPredictedGroundRisk;
+        PredictedPredatorRisk = agent.model.LastPredictedPredatorRisk;
         LastActionMagnitude = actions.Take(limbs.Length).Select(Mathf.Abs).DefaultIfEmpty(0f).Average();
-        agent.brain.ApplyNativeActions(actions, agent.model.CurrentGoal, controlIntervalTicks, Tick);
+        agent.brain.ApplyNativeActions(actions, plan.goal, controlIntervalTicks, Tick);
+        agent.transitionPending = true; agent.transitionDueTick = Tick + controlIntervalTicks; agent.transitionStartPosition = agent.identity.torso.transform.position; agent.transitionStartEnergy = agent.identity.torso.energy;
+    }
+
+    private void CompleteTransitionIfDue(NativeAgent agent)
+    {
+        if (!agent.transitionPending || agent.identity == null || agent.identity.torso == null || Tick < agent.transitionDueTick) return;
+        Torso torso = agent.identity.torso;
+        bool predatorContact = IsPredatorOverlapping(agent.identity) || (agent.brain != null && agent.brain.DeathReason == "predator");
+        NativeTransitionTarget target = new NativeTransitionTarget { displacement = (Vector2)torso.transform.position - agent.transitionStartPosition, energyDelta = (torso.energy - agent.transitionStartEnergy) / Mathf.Max(1f, torso.maxEnergy), torsoGrounded = torso.TouchingGround, predatorContact = predatorContact };
+        ActualGroundRisk = target.torsoGrounded ? 1f : 0f; ActualPredatorRisk = target.predatorContact ? 1f : 0f;
+        if (agent.model.TrainDynamics(target))
+        {
+            sharedWeights.CopyM3From(agent.model.Weights);
+            foreach (NativeAgent other in agents) if (other != agent) other.model.CopyM3From(sharedWeights);
+            SnapshotVersion++;
+        }
+        LastM3Loss = agent.model.LastM3Loss;
+        agent.transitionPending = false;
+    }
+
+    private static bool IsPredatorOverlapping(CreatureIdentity identity)
+    {
+        foreach (Predator predator in FindObjectsByType<Predator>(FindObjectsInactive.Exclude)) if (predator.IsOverlapping(identity)) return true;
+        return false;
     }
 
     private void SeedPopulation()
@@ -176,6 +254,87 @@ public sealed class NativeEcosystemController : MonoBehaviour
             BodyGenomeDto body = CreateSeedBody(i);
             Spawn(body, "body_seed_" + (i % 3), "m1_seed_" + (i % 3), sharedWeights.Clone(), i);
         }
+    }
+
+    private void ReplaceDeadCreaturesImmediately()
+    {
+        NativeAgent[] dead = agents.Where(agent => agent.brain == null || agent.brain.IsDead).ToArray();
+        if (dead.Length == 0) return;
+
+        foreach (NativeAgent victim in dead)
+        {
+            if (!agents.Contains(victim)) continue;
+            RecordDeathPenalty(victim);
+            NativeAgent parent = SelectLivingParent();
+            int slot = Mathf.Max(0, agents.IndexOf(victim));
+            ReplaceAgent(victim, parent, slot);
+            ImmediateReplacementCount++;
+            LastReplacementTick = Tick;
+        }
+        RebuildSpeciation();
+        Status = "Native ecosystem replacing dead creatures";
+    }
+
+    private NativeAgent SelectLivingParent()
+    {
+        Dictionary<string, float> sharedFitness = NativeNestedSpeciation.SharedFitness(species);
+        return agents.Where(agent => agent.brain != null && !agent.brain.IsDead)
+            .OrderBy(agent => sharedFitness.TryGetValue(agent.identity.creatureId, out float fitness) ? fitness : float.PositiveInfinity)
+            .FirstOrDefault();
+    }
+
+    private static void RecordDeathPenalty(NativeAgent agent)
+    {
+        if (agent == null || agent.brain == null || agent.deathRecorded) return;
+        float penalty = agent.brain.DeathReason == "predator" ? 100f : 25f;
+        agent.deathPenalty += penalty;
+        agent.m1EnergyFitness -= penalty;
+        agent.deathRecorded = true;
+    }
+
+    private void ReplaceAgent(NativeAgent victim, NativeAgent parent, int slot)
+    {
+        GameObject victimRoot = victim.identity != null && victim.identity.transform.parent != null
+            ? victim.identity.transform.parent.gameObject
+            : victim.identity?.gameObject;
+        if (victimRoot != null) { victimRoot.SetActive(false); Destroy(victimRoot); }
+        agents.Remove(victim);
+
+        if (parent == null)
+        {
+            BodyGenomeDto seed = CreateSeedBody(slot);
+            Spawn(seed, "body_seed_" + (slot % 3), "m1_seed_" + (slot % 3), sharedWeights.Clone(), slot);
+            return;
+        }
+
+        BodyGenomeDto child = JsonConvert.DeserializeObject<BodyGenomeDto>(JsonConvert.SerializeObject(parent.body));
+        MutateBody(child);
+        NativeAgent m1Parent = agents.Where(agent => agent.brain != null && !agent.brain.IsDead && agent.identity.speciesId == parent.identity.speciesId)
+            .OrderByDescending(agent => agent.m1EnergyFitness).FirstOrDefault() ?? parent;
+        NativeBrainWeights childWeights = parent.model.Weights.Clone();
+        Array.Copy(m1Parent.model.Weights.m1Input, childWeights.m1Input, childWeights.m1Input.Length);
+        Array.Copy(m1Parent.model.Weights.m1Hidden, childWeights.m1Hidden, childWeights.m1Hidden.Length);
+        Array.Copy(m1Parent.model.Weights.m1Output, childWeights.m1Output, childWeights.m1Output.Length);
+        childWeights.Mutate(random, .12f);
+        childWeights.CopyM3From(sharedWeights);
+        Spawn(child, parent.identity.speciesId, parent.brain.M1SpeciesId, childWeights, slot);
+        Generation++;
+    }
+
+    private void RecoverFromExtinction()
+    {
+        // A fully dead population cannot select a parent.  Remove only those
+        // disabled phenotypes, then restart the live native population from
+        // the current shared model instead of leaving permanent corpses.
+        foreach (NativeAgent agent in agents)
+        {
+            GameObject root = agent.identity != null && agent.identity.transform.parent != null ? agent.identity.transform.parent.gameObject : agent.identity?.gameObject;
+            if (root != null) { root.SetActive(false); Destroy(root); }
+        }
+        agents.Clear();
+        SeedPopulation();
+        RebuildSpeciation();
+        Status = "Native ecosystem recovered from extinction";
     }
 
     private BodyGenomeDto CreateSeedBody(int index)
@@ -220,7 +379,7 @@ public sealed class NativeEcosystemController : MonoBehaviour
                 {
                     if (Mathf.Abs(dx) != ring && Mathf.Abs(dy) != ring) continue;
                     Vector2 candidate = origin + new Vector2(dx, dy) * MinimumSpawnSeparation;
-                    bool occupied = agents.Any(agent => agent.identity != null && agent.identity.torso != null && ((Vector2)agent.identity.torso.transform.position - candidate).sqrMagnitude < requiredSqr);
+                    bool occupied = agents.Any(agent => agent.brain != null && !agent.brain.IsDead && agent.identity != null && agent.identity.torso != null && ((Vector2)agent.identity.torso.transform.position - candidate).sqrMagnitude < requiredSqr);
                     if (!occupied) return candidate;
                 }
         throw new InvalidOperationException("No non-overlapping native creature spawn position is available");
@@ -229,24 +388,13 @@ public sealed class NativeEcosystemController : MonoBehaviour
     private void Evolve()
     {
         if (agents.Count < 2) return;
-        Dictionary<string, float> sharedFitness = NativeNestedSpeciation.SharedFitness(species);
-        NativeAgent parent = agents.Where(a => !a.brain.IsDead).OrderBy(a => sharedFitness.TryGetValue(a.identity.creatureId, out float fitness) ? fitness : float.PositiveInfinity).FirstOrDefault();
+        NativeAgent parent = SelectLivingParent();
         NativeAgent victim = agents.Where(a => a != parent).OrderByDescending(a => a.model.BodyFitness).FirstOrDefault();
         if (parent == null || victim == null) return;
-        NativeAgent m1Parent = agents.Where(a => !a.brain.IsDead && a.identity.speciesId == parent.identity.speciesId).OrderByDescending(a => a.m1EnergyFitness).FirstOrDefault() ?? parent;
         int slot = Array.IndexOf(agents.ToArray(), victim);
-        GameObject victimRoot = victim.identity.transform.parent != null ? victim.identity.transform.parent.gameObject : victim.identity.gameObject;
-        // Destroy is deferred by Unity; deactivate the old phenotype first so
-        // its renderer and colliders cannot overlap the replacement this frame.
-        if (victimRoot != null) victimRoot.SetActive(false);
-        Destroy(victimRoot); agents.Remove(victim);
-        BodyGenomeDto child = JsonConvert.DeserializeObject<BodyGenomeDto>(JsonConvert.SerializeObject(parent.body));
-        MutateBody(child);
-        NativeBrainWeights childWeights = parent.model.Weights.Clone();
-        Array.Copy(m1Parent.model.Weights.m1Input, childWeights.m1Input, childWeights.m1Input.Length); Array.Copy(m1Parent.model.Weights.m1Hidden, childWeights.m1Hidden, childWeights.m1Hidden.Length); Array.Copy(m1Parent.model.Weights.m1Output, childWeights.m1Output, childWeights.m1Output.Length);
-        childWeights.Mutate(random, .12f);
-        childWeights.CopyM3From(sharedWeights);
-        Spawn(child, parent.identity.speciesId, parent.brain.M1SpeciesId, childWeights, Mathf.Max(0, slot)); Generation++; RebuildSpeciation(); SaveCheckpoint();
+        ReplaceAgent(victim, parent, Mathf.Max(0, slot));
+        RebuildSpeciation();
+        SaveCheckpoint();
     }
 
     private void MutateBody(BodyGenomeDto body)
