@@ -8,7 +8,7 @@ using UnityEngine;
 public class EnvironmentSpawner : MonoBehaviour
 {
     [Header("Ground")]
-    public float groundWidth = 260f;
+    public float groundWidth = 400f;
     public float groundThickness = 1f;
     public Vector2 groundCenter = new Vector2(0f, -5f);
 
@@ -27,6 +27,8 @@ public class EnvironmentSpawner : MonoBehaviour
     public float trainingFoodMaximumDistance = 14f;
     public float highEnergyFoodValue = 150f;
     public float highEnergyFoodSpeed = 3.5f;
+    [Tooltip("Food and predators are created only after the native feature button is pressed.")]
+    public bool startFeaturesEnabled = false;
 
     [Header("Predators")]
     // Keep a single predator in the native training arena. Predators remain
@@ -45,6 +47,7 @@ public class EnvironmentSpawner : MonoBehaviour
     private List<Predator> spawnedPredators = new List<Predator>();
     private System.Random trainingRandom = new System.Random(7301);
     private float nextTrainingEpisode;
+    public bool FeaturesEnabled { get; private set; }
 
     private void Awake()
     {
@@ -74,17 +77,33 @@ public class EnvironmentSpawner : MonoBehaviour
     private void Start()
     {
         SpawnGround();
+        if (startFeaturesEnabled) EnableFeatures();
+    }
+
+    private void FixedUpdate()
+    {
+        if (!FeaturesEnabled || !trainingRoutineEnabled || Time.time < nextTrainingEpisode) return;
+        nextTrainingEpisode += Mathf.Max(.5f, trainingEpisodeSeconds);
+        RunTrainingEpisode();
+    }
+
+    public void EnableFeatures()
+    {
+        if (FeaturesEnabled) return;
+        FeaturesEnabled = true;
         SpawnFood();
         SpawnPredators();
         EnsureTrainingPools();
         nextTrainingEpisode = Time.time + trainingEpisodeSeconds;
     }
 
-    private void FixedUpdate()
+    public void DisableFeatures()
     {
-        if (!trainingRoutineEnabled || Time.time < nextTrainingEpisode) return;
-        nextTrainingEpisode += Mathf.Max(.5f, trainingEpisodeSeconds);
-        RunTrainingEpisode();
+        FeaturesEnabled = false;
+        foreach (Food food in spawnedFood) if (food != null) Destroy(food.gameObject);
+        foreach (HighEnergyFood food in spawnedHighEnergyFood) if (food != null) Destroy(food.gameObject);
+        foreach (Predator predator in spawnedPredators) if (predator != null) Destroy(predator.gameObject);
+        spawnedFood.Clear(); spawnedHighEnergyFood.Clear(); spawnedPredators.Clear();
     }
 
     private void SpawnGround()
@@ -99,7 +118,7 @@ public class EnvironmentSpawner : MonoBehaviour
         ground.transform.localScale = new Vector3(groundWidth, groundThickness, 1f);
 
         BoxCollider2D col = ground.AddComponent<BoxCollider2D>();
-        col.size = Vector2.one;
+        col.size = Vector2.one; col.sharedMaterial = NativePhysicsMaterials.Ground; ground.AddComponent<GroundSurface>();
         // no Rigidbody2D -- a Collider2D with no Rigidbody2D is a static
         // collider in Unity's 2D physics, exactly what ground should be
         SpawnWall("WorldWallLeft", groundCenter.x - groundWidth / 2f);

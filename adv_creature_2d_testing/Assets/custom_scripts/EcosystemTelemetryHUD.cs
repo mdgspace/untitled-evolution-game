@@ -8,6 +8,7 @@ public class EcosystemTelemetryHUD : MonoBehaviour
     private NativeEcosystemController native;
     private string cachedDetails = "Starting telemetry…";
     private float nextRefresh;
+    private GUIContent telemetryContent;
 
     private void Awake()
     {
@@ -21,7 +22,12 @@ public class EcosystemTelemetryHUD : MonoBehaviour
         if (native == null) native = GetComponent<NativeEcosystemController>();
         if (Time.unscaledTime < nextRefresh) return;
         nextRefresh = Time.unscaledTime + .25f;
-        if (native != null && native.isActiveAndEnabled) { string fault = string.IsNullOrEmpty(native.LastCheckpointError) ? native.LastControlError : native.LastCheckpointError; cachedDetails = $"NATIVE ECOSYSTEM\n{native.Status}\nRender {native.RenderRateHz:F1} FPS   Physics {native.PhysicsMode}\nTick {native.Tick}   Action cadence {native.controlIntervalTicks} ticks   Generation {native.Generation}\nPopulation {native.Population}/{native.populationTarget}   Nested body species {native.SpeciesCount}\nM2 horizon loss {native.LastM2Loss:F5}   M3 transition loss {native.LastM3Loss:F5}\nGoal window {native.GoalTicksRemaining}/{NativeCreatureModel.GoalWindowTicks} ticks   Plan rollouts {native.PlannerRollouts}   Planner {native.PlannerMilliseconds:F2} ms   Refinement gain {native.RefinementGain:F4}\nPredicted ground/predator {native.PredictedGroundRisk:F2}/{native.PredictedPredatorRisk:F2}   Actual {native.ActualGroundRisk:F0}/{native.ActualPredatorRisk:F0}\nMean action {native.LastActionMagnitude:F2} degrees   Bounds {NativeCreatureModel.MinimumActionDegrees:F2}..{NativeCreatureModel.MaximumActionDegrees:F2}\nControls {native.ActiveControlCount}/{native.Population}   Dead {native.DeadCreatureCount}   Moving sustained {native.MovingCreatureCount}\nReplacements {native.ImmediateReplacementCount}   Last replacement tick {native.LastReplacementTick}\nRoot speed {native.MeanRootSpeed:F2}   Joint speed {native.MeanJointSpeed:F2}   Control faults {native.ControlFailures}   Snapshot {native.SnapshotVersion}\nNext checkpoint {native.SecondsUntilCheckpoint:F1}s / interval {native.checkpointIntervalSeconds:F1}s\nLast checkpoint {native.LastCheckpointSavedAt}   Status {native.CheckpointStatus}\n{fault}"; return; }
+        if (native != null && native.isActiveAndEnabled)
+        {
+            string fault = string.IsNullOrEmpty(native.LastCheckpointError) ? native.LastControlError : native.LastCheckpointError;
+            cachedDetails = $"NATIVE OPEN-LOOP ECOSYSTEM  {native.ExperimentId}\n{native.Status}\nRender {native.RenderRateHz:F1} FPS   Physics {native.PhysicsMode}\nTick {native.Tick}   Sequence {native.SequenceStep}/5   action hold {NativeCreatureModel.ActionTicks} ticks   M1 {(native.M1Enabled ? "ON" : "OFF")} ({native.M1ActivationSource})\nPopulation {native.Population}/{native.populationTarget}   Species {native.SpeciesCount}   Births {native.Generation}\nM2 total/goal/energy {native.LastM2Loss:F5}/{native.LastM2GoalLoss:F5}/{native.LastM2EnergyLoss:F5}\nM2 L/R {native.LeftProposalLoss:F4}/{native.RightProposalLoss:F4} n {native.LeftProposalSamples}/{native.RightProposalSamples}   {native.DirectionState}\nM3 total/MSE/relative {native.LastM3Loss:F5}/{native.LastM3Mse:F5}/{native.LastM3RelativeLoss:F5}   updates {native.SharedM3Updates}\nGoal remaining {native.GoalTicksRemaining}/{NativeCreatureModel.GoalWindowTicks}   bias {native.BiasStrength:P1}   noise σ {native.ExplorationSigma:F3}°\nPlan + one M2 update {native.PlannerMilliseconds:F1} ms   updates this boundary {native.M2TrainingUpdates}\nMean action {native.LastActionMagnitude:F2}°   bounds ±{NativeCreatureModel.MaximumActionDegrees:F1}°\nControls {native.ActiveControlCount}/{native.Population}   Settling {native.SettlingCreatureCount}   Dead {native.DeadCreatureCount}   Moving {native.MovingCreatureCount}\nReplacements {native.ImmediateReplacementCount}   Last tick {native.LastReplacementTick}   Retry {native.ReplacementRetryState}\nRoot speed {native.MeanRootSpeed:F2}   Joint speed {native.MeanJointSpeed:F2}   Faults {native.ControlFailures}\nNext checkpoint {native.SecondsUntilCheckpoint:F1}s   Last {native.LastCheckpointSavedAt}   {native.CheckpointStatus}\n{fault}";
+            return;
+        }
         string transport = bridge == null ? "No bridge" : bridge.ConnectionStatus;
         string processState = process == null ? "No process manager" : process.Status;
         string details = bridge == null ? "" : string.Format(
@@ -42,8 +48,9 @@ public class EcosystemTelemetryHUD : MonoBehaviour
 
     private void OnGUI()
     {
-        if (style == null) style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14,
-                                                               wordWrap = true, padding = new RectOffset(10, 10, 8, 8) };
-        GUI.Box(new Rect(10, 10, 760, 530), cachedDetails, style);
+        if (style == null) style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 12,
+                                                               wordWrap = true, padding = new RectOffset(7, 7, 6, 6) };
+        telemetryContent ??= new GUIContent(); telemetryContent.text=cachedDetails;float width=Mathf.Clamp(style.CalcSize(telemetryContent).x+14f,100f,Mathf.Max(100f,Screen.width-20f));float height=style.CalcHeight(telemetryContent,width)+12f;Rect telemetryRect=new Rect(10,10,width,height);GUI.Box(telemetryRect,telemetryContent,style);
+        if(native!=null&&!native.InteractiveFeaturesEnabled&&GUI.Button(new Rect(10,telemetryRect.yMax+8f,220f,28f),"Enable Food, Predators & M1"))native.EnableInteractiveFeaturesFromUser();
     }
 }

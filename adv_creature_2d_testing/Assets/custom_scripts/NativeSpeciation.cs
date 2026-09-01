@@ -45,8 +45,14 @@ public static class NativeNestedSpeciation
     }
     public static Dictionary<string, float> SharedFitness(IReadOnlyList<NativeBodySpecies> species)
     {
-        Dictionary<string, float> result = new Dictionary<string, float>(); foreach (NativeBodySpecies body in species) { int total = body.subSpecies.Sum(s => s.members.Count); foreach (NativeBrainSubSpecies sub in body.subSpecies) foreach (NativeCreatureControllerView member in sub.members) result[member.id] = member.fitness / Math.Max(1, sub.members.Count) / Math.Max(1, total); } return result;
+        Dictionary<string, float> result = new Dictionary<string, float>(); foreach (NativeBodySpecies body in species) { int total = body.subSpecies.Sum(s => s.members.Count); foreach (NativeBrainSubSpecies sub in body.subSpecies) foreach (NativeCreatureControllerView member in sub.members) { float quality = float.IsInfinity(member.fitness) || float.IsNaN(member.fitness) ? 0f : 1f / (1e-4f + Math.Max(0f, member.fitness)); result[member.id] = quality / Math.Max(1, sub.members.Count) / Math.Max(1, total); } } return result;
     }
-    private static float BodyDistance(BodyGenomeDto a, BodyGenomeDto b) { if (a == null || b == null) return float.PositiveInfinity; float value = Math.Abs(a.torso_width - b.torso_width) + Math.Abs(a.torso_height - b.torso_height) + Math.Abs(a.limbs.Count - b.limbs.Count); return value / 3f; }
-    private static float BrainDistance(NativeBrainWeights a, NativeBrainWeights b) { if (a == null || b == null) return float.PositiveInfinity; float total = 0f; int count = 0; foreach (var pair in a.Arrays().Zip(b.Arrays(), (x, y) => new { x, y })) for (int i = 0; i < Math.Min(pair.x.Length, pair.y.Length); i++) { total += Math.Abs(pair.x[i] - pair.y[i]); count++; } return count == 0 ? 0f : total / count; }
+    private static float BodyDistance(BodyGenomeDto a, BodyGenomeDto b)
+    {
+        if (a == null || b == null) return float.PositiveInfinity; float total = 0f; int terms = 0;
+        Dictionary<int, LimbGeneDto> left = a.limbs.Where(x => x.enabled).ToDictionary(x => x.innovation_id); Dictionary<int, LimbGeneDto> right = b.limbs.Where(x => x.enabled).ToDictionary(x => x.innovation_id);
+        foreach (int innovation in left.Keys.Union(right.Keys)) { terms += 2; if (!left.TryGetValue(innovation, out LimbGeneDto x) || !right.TryGetValue(innovation, out LimbGeneDto y)) { total += 2f; continue; } total += x.parent_innovation_id == y.parent_innovation_id ? 0f : 1f; total += x.attachment_slot == y.attachment_slot ? 0f : 1f; }
+        return total / Math.Max(1, terms);
+    }
+    private static float BrainDistance(NativeBrainWeights a, NativeBrainWeights b) { if (a == null || b == null) return float.PositiveInfinity; float total = 0f; int count = 0; foreach (var pair in a.ControllerArrays().Zip(b.ControllerArrays(), (x, y) => new { x, y })) for (int i = 0; i < Math.Min(pair.x.Length, pair.y.Length); i++) { total += Math.Abs(pair.x[i] - pair.y[i]); count++; } return count == 0 ? 0f : total / count; }
 }

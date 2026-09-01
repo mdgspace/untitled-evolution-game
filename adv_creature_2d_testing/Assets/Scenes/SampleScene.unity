@@ -146,7 +146,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 073797afb82c5a1438f328866b10b3f0, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   m_ComponentVersion: 4
   m_LightType: 4
@@ -375,13 +375,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: LiveEcosystem.Runtime::ObserverCamera
   panSpeed: 28
-  worldMinX: -130
-  worldMaxX: 130
+  worldMinX: -200
+  worldMaxX: 200
   worldMinY: -8
   worldMaxY: 24
   minimumZoom: 4
-  maximumZoom: 14
+  maximumZoom: 8
   zoomSpeed: 0.02
+  framePopulationOnStart: 0
+  startupZoom: 6.87857
 --- !u!1 &1542038273
 GameObject:
   m_ObjectHideFlags: 0
@@ -396,6 +398,7 @@ GameObject:
   - component: {fileID: 1542038279}
   - component: {fileID: 1542038278}
   - component: {fileID: 1542038277}
+  - component: {fileID: 1542038281}
   m_Layer: 0
   m_Name: spawner
   m_TagString: Untagged
@@ -454,7 +457,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3d73b34279eb37e40b9d670c8c4926ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: LiveEcosystem.Runtime::EnvironmentSpawner
-  groundWidth: 260
+  groundWidth: 400
   groundThickness: 1
   groundCenter: {x: 0, y: -5}
   foodCount: 10
@@ -462,10 +465,21 @@ MonoBehaviour:
   foodEnergyValue: 20
   foodScale: 0.22
   foodMinimumSpawnDistance: 1.8
+  trainingRoutineEnabled: 1
+  trainingEpisodeSeconds: 10
+  trainingFoodPerCreature: 3
+  trainingFoodMinimumDistance: 5
+  trainingFoodMaximumDistance: 14
+  highEnergyFoodValue: 150
+  highEnergyFoodSpeed: 3.5
+  startFeaturesEnabled: 0
   predatorCount: 1
   predatorSpawnRadius: 120
   predatorScale: 0.35
   predatorMinimumSpawnDistance: 28
+  trainingPredatorMinimumDistance: 24
+  trainingPredatorMaximumDistance: 34
+  predatorChaseSpeed: 0.25
 --- !u!114 &1542038279
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -484,6 +498,7 @@ MonoBehaviour:
   slowPythonCallInterval: 5
   slowRoundTripThresholdMilliseconds: 40
   populationTarget: 4
+  maximumCatchUpSteps: 4
 --- !u!114 &1542038280
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -497,6 +512,27 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: LiveEcosystem.Runtime::PythonProcessManager
   bridge: {fileID: 1542038279}
+--- !u!114 &1542038281
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1542038273}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a09df8af685cf4843b6a0f8ec0701a87, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: LiveEcosystem.Runtime::NativeEcosystemController
+  populationTarget: 6
+  enableM1: 0
+  controlIntervalTicks: 3
+  evolutionIntervalSeconds: 75
+  checkpointIntervalSeconds: 30
+  allowForcedEvolution: 1
+  loadCheckpointOnStart: 1
+  bodyMutationCooldownGenerations: 12
+  checkpointFileName: native_ecosystem_v13.json
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -28,18 +28,18 @@ public static class BodyUtils
 // drifting back into a small centre-of-map cluster.
 public static class WorldLayout
 {
-    public const float WorldHalfWidth = 130f;
+    public const float WorldHalfWidth = 200f;
     public const float GroundTop = -4.5f;
-    public const int SpawnColumns = 5;
+    public const int SpawnColumns = 6;
     public const int MaximumNativeSpawnSlots = 10;
-    public const float SpawnColumnSpacing = 56f;
-    public const float SpawnRowSpacing = 12f;
+    public const float SpawnColumnSpacing = 64f;
+    public const float SpawnRowSpacing = 64f;
 
     public static Vector2 CreatureSpawnPosition(int slot)
     {
         int column = slot % SpawnColumns;
         int row = slot / SpawnColumns;
-        return new Vector2(-88f + column * SpawnColumnSpacing, GroundTop + 2.25f + row * SpawnRowSpacing);
+        return new Vector2(-160f + column * SpawnColumnSpacing, GroundTop + 2.5f + row * SpawnRowSpacing);
     }
 
     public static bool IsFarFromCreatureSpawns(Vector2 point, float minimumDistance)

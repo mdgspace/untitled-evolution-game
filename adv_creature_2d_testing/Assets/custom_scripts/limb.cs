@@ -28,6 +28,7 @@ public class Limb : MonoBehaviour
     private int actionTicksRemaining;
 
     public Rigidbody2D Rigidbody => rb;
+    public float JointAngle => hinge == null ? 0f : hinge.jointAngle;
     public float JointSpeed => hinge == null ? 0f : hinge.jointSpeed;
     public float MinAngle => hinge == null ? 0f : hinge.limits.min;
     public float MaxAngle => hinge == null ? 0f : hinge.limits.max;
@@ -44,10 +45,11 @@ public class Limb : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         rb.simulated = true; rb.gravityScale = 1f; rb.constraints = RigidbodyConstraints2D.None;
-        rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
+        rb.sleepMode = RigidbodySleepMode2D.StartAwake;
         rb.interpolation = RigidbodyInterpolation2D.Interpolate; rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-        rb.mass = Mathf.Clamp(gene.mass, .05f, 10f);
-        rb.inertia = Mathf.Clamp(gene.inertia, .005f, 10f);
+        float areaScale = phenotypeScale * phenotypeScale; float inertiaScale = areaScale * areaScale;
+        rb.mass = Mathf.Clamp(gene.mass * areaScale, .02f, 10f);
+        rb.inertia = Mathf.Clamp(gene.inertia * inertiaScale, .001f, 10f);
         hinge = GetComponent<HingeJoint2D>();
         innovationId = gene.innovation_id; parentInnovationId = gene.parent_innovation_id;
         attachmentSlot = gene.attachment_slot; genePath = path; depth = path.Length;
@@ -56,7 +58,7 @@ public class Limb : MonoBehaviour
         bodyPart = gameObject.AddComponent<BodyPart>(); bodyPart.identity = identity;
         SpriteRenderer sr = GetComponent<SpriteRenderer>(); sr.sprite = BodyUtils.GetSquareSprite();
         sr.color = Color.Lerp(new Color(.3f,.5f,.9f), new Color(.3f,.9f,.6f), depth / 5f);
-        BoxCollider2D col = GetComponent<BoxCollider2D>(); col.size = Vector2.one;
+        BoxCollider2D col = GetComponent<BoxCollider2D>(); col.size = Vector2.one; col.sharedMaterial = NativePhysicsMaterials.Body;
         transform.localScale = new Vector3(dimensions.x, dimensions.y, 1f);
         transform.position = attachPoint + worldDirection * dimensions.x / 2f;
         transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(worldDirection.y, worldDirection.x) * Mathf.Rad2Deg);
@@ -91,7 +93,13 @@ public class Limb : MonoBehaviour
         // not silently change a motor to zero and make a healthy creature look
         // frozen.
         actionTicksRemaining = Mathf.Max(1, controlTicks);
-        SetSpeed(lastAppliedDelta / fixedDeltaTime);
+        if (hinge != null)
+        {
+            hinge.enabled = true;
+            hinge.useMotor = true;
+        }
+        rb.WakeUp(); if (hinge != null && hinge.connectedBody != null) hinge.connectedBody.WakeUp();
+        SetSpeed(lastAppliedDelta / Mathf.Max(.0001f, fixedDeltaTime));
     }
 
     public void AdvanceMotorTick()

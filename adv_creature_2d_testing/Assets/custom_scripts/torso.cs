@@ -1,5 +1,23 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+
+// Runtime-owned materials make the learning environment explicit and
+// reproducible without relying on Unity's implicit fallback material.
+public static class NativePhysicsMaterials
+{
+    private static PhysicsMaterial2D body;
+    private static PhysicsMaterial2D ground;
+    // Use Unity's overloaded null comparison. Runtime-created Unity objects can
+    // retain a non-null CLR reference after destruction, which ??= cannot detect.
+    public static PhysicsMaterial2D Body { get { if (body == null) body = Create("NativeBodyTraction", .6f); return body; } }
+    public static PhysicsMaterial2D Ground { get { if (ground == null) ground = Create("NativeGroundTraction", .8f); return ground; } }
+    private static PhysicsMaterial2D Create(string name, float friction) => new PhysicsMaterial2D(name) { friction = friction, bounciness = 0f };
+}
+
+// Explicit semantic marker used by grounded sensing; object names are not a
+// physics contract and can safely change without corrupting M3 labels.
+public sealed class GroundSurface : MonoBehaviour { }
 
 [RequireComponent(typeof(Rigidbody2D), typeof(SpriteRenderer), typeof(BoxCollider2D))]
 public class Torso : MonoBehaviour
@@ -13,8 +31,11 @@ public class Torso : MonoBehaviour
     public float movementEnergyPerDegree = .01f;
     // Still much larger than the baseline cost, but long enough for a new
     // controller to receive multiple decisions and explore before starvation.
-    public float idleEnergyPerSecond = 2.5f;
-    public float idleAfterSeconds = 4f;
+    public float idleEnergyPerSecond = .75f;
+    public float idleAfterSeconds = 15f;
+    // Native evolution reduces this during the fixed-goal curriculum so a
+    // creature can survive several ten-second left/right trials.
+    public float EnergyPenaltyScale { get; set; } = 1f;
     [Range(.1f, 1f)] public float phenotypeScale = .45f;
     public BodyPart bodyPart;
     public List<Limb> childLimbs = new List<Limb>();
@@ -26,6 +47,8 @@ public class Torso : MonoBehaviour
     private float movementCost;
     private float idleCost;
     private readonly HashSet<Collider2D> groundContacts = new HashSet<Collider2D>();
+    private readonly Collider2D[] visionHits = new Collider2D[32];
+    private static readonly ContactFilter2D VisionFilter = new ContactFilter2D { useTriggers = true, useLayerMask = false, useDepth = false, useNormalAngle = false };
     public Rigidbody2D Rigidbody => rb;
     public float FoodGain => foodGain;
     public bool TouchingGround => groundContacts.Count > 0;
@@ -34,12 +57,13 @@ public class Torso : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>(); rb.bodyType = RigidbodyType2D.Dynamic;
         rb.simulated = true; rb.gravityScale = 1f; rb.constraints = RigidbodyConstraints2D.None;
-        rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
-        rb.mass = Mathf.Clamp(genome.torso_mass, .1f, 20f);
-        rb.inertia = Mathf.Clamp(genome.torso_inertia, .01f, 20f);
+        rb.sleepMode = RigidbodySleepMode2D.StartAwake; rb.interpolation = RigidbodyInterpolation2D.Interpolate; rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        float areaScale = phenotypeScale * phenotypeScale; float inertiaScale = areaScale * areaScale;
+        rb.mass = Mathf.Clamp(genome.torso_mass * areaScale, .05f, 20f);
+        rb.inertia = Mathf.Clamp(genome.torso_inertia * inertiaScale, .0025f, 20f);
         dimensions = new Vector2(genome.torso_width, genome.torso_height) * phenotypeScale;
         SpriteRenderer sr = GetComponent<SpriteRenderer>(); sr.sprite = BodyUtils.GetSquareSprite(); sr.color = new Color(.85f,.3f,.3f);
-        BoxCollider2D col = GetComponent<BoxCollider2D>(); col.size = Vector2.one;
+        BoxCollider2D col = GetComponent<BoxCollider2D>(); col.size = Vector2.one; col.sharedMaterial = NativePhysicsMaterials.Body;
         transform.localScale = new Vector3(dimensions.x, dimensions.y, 1f);
         bodyPart = gameObject.AddComponent<BodyPart>(); bodyPart.identity = identity;
         Dictionary<int, Rigidbody2D> parents = new Dictionary<int, Rigidbody2D> { { 0, rb } };
@@ -50,8 +74,10 @@ public class Torso : MonoBehaviour
             for (int i = pending.Count - 1; i >= 0; i--) {
                 LimbGeneDto gene = pending[i];
                 if (!gene.enabled || !parents.ContainsKey(gene.parent_innovation_id)) { if (!gene.enabled) pending.RemoveAt(i); continue; }
-                Vector2 dir = BodyUtils.SlotDirections[Mathf.Clamp(gene.attachment_slot, 0, BodyUtils.SlotDirections.Length - 1)];
-                Vector2 attach = AttachmentPoint(parents[gene.parent_innovation_id], dir);
+                Rigidbody2D parent = parents[gene.parent_innovation_id];
+                Vector2 localAttachment = BodyMorphologyRules.LocalAttachmentPoint(gene.parent_innovation_id, gene.attachment_slot);
+                Vector2 attach = parent.transform.TransformPoint(localAttachment);
+                Vector2 dir = parent.transform.TransformDirection(localAttachment.normalized).normalized;
                 GameObject go = new GameObject("Limb_" + gene.innovation_id); go.transform.SetParent(transform.parent);
                 Limb limb = go.AddComponent<Limb>(); int[] parentPath = paths[gene.parent_innovation_id];
                 int[] path = new int[parentPath.Length + 1]; parentPath.CopyTo(path, 0); path[path.Length - 1] = gene.attachment_slot;
@@ -61,16 +87,6 @@ public class Torso : MonoBehaviour
             }
             if (!built) break; // malformed orphan gene: Python validation should already have removed it.
         }
-    }
-
-    // The BoxCollider uses a local [-.5,.5] rectangle.  Projecting the chosen
-    // world direction into that space gives a cheap, exact-on-the-rectangle
-    // attachment point even when the parent limb is already rotated.
-    private static Vector2 AttachmentPoint(Rigidbody2D parent, Vector2 worldDirection)
-    {
-        Vector2 localDirection = parent.transform.InverseTransformDirection(worldDirection).normalized;
-        float divisor = Mathf.Max(Mathf.Abs(localDirection.x), Mathf.Abs(localDirection.y));
-        return divisor <= .0001f ? parent.position : parent.transform.TransformPoint(localDirection * (.5f / divisor));
     }
 
     public List<Limb> GetAllLimbs() => new List<Limb>(childLimbs);
@@ -84,9 +100,10 @@ public class Torso : MonoBehaviour
         // remains stationary even when it is spending energy at its joints.
         bool idle = rb.linearVelocity.magnitude < .05f;
         idleSeconds = idle ? idleSeconds + dt : 0f;
-        float baseline = baselineEnergyPerSecond * dt;
-        float movement = movedDegrees * movementEnergyPerDegree;
-        float idleThisTick = idleSeconds >= idleAfterSeconds ? idleEnergyPerSecond * dt : 0f;
+        float penaltyScale = Mathf.Max(0f, EnergyPenaltyScale);
+        float baseline = baselineEnergyPerSecond * dt * penaltyScale;
+        float movement = movedDegrees * movementEnergyPerDegree * penaltyScale;
+        float idleThisTick = idleSeconds >= idleAfterSeconds ? idleEnergyPerSecond * dt * penaltyScale : 0f;
         baselineCost += baseline; movementCost += movement; idleCost += idleThisTick;
         energy = Mathf.Max(0f, energy - baseline - movement - idleThisTick);
     }
@@ -104,6 +121,21 @@ public class Torso : MonoBehaviour
         };
     }
 
+    // Native M1 consumes this fixed numeric layout directly. It avoids
+    // constructing a string-keyed Dictionary on every control decision.
+    public void FillNativeGlobalInputs(float[] output)
+    {
+        if (output == null || output.Length < 14) throw new ArgumentException("Native global input buffer must contain 14 values.");
+        VisionReadout vision = ScanVision();
+        float radians = rb.rotation * Mathf.Deg2Rad;
+        output[0] = energy / 200f; output[1] = transform.position.x / 50f; output[2] = transform.position.y / 50f;
+        output[3] = rb.linearVelocity.x / 20f; output[4] = rb.linearVelocity.y / 20f; output[5] = rb.angularVelocity / 360f;
+        output[6] = Mathf.Sin(radians); output[7] = Mathf.Cos(radians); output[8] = vision.food ? 1f : 0f;
+        output[9] = vision.foodRel.x / 20f; output[10] = vision.foodRel.y / 20f;
+        output[11] = vision.predator ? 1f : 0f; output[12] = vision.predatorRel.x / 20f; output[13] = vision.predatorRel.y / 20f;
+        for (int i = 14; i < output.Length; i++) output[i] = 0f;
+    }
+
     public void DisablePhenotype()
     {
         if (rb != null) { rb.linearVelocity = Vector2.zero; rb.angularVelocity = 0f; rb.simulated = false; }
@@ -113,13 +145,16 @@ public class Torso : MonoBehaviour
     private void OnCollisionExit2D(Collision2D collision) { TrackGroundContact(collision.collider, false); }
     private void TrackGroundContact(Collider2D collider, bool entering)
     {
-        if (collider == null || collider.gameObject.name != "Ground") return;
+        if (collider == null || collider.GetComponent<GroundSurface>() == null) return;
         if (entering) groundContacts.Add(collider); else groundContacts.Remove(collider);
     }
     private struct VisionReadout { public bool food, predator; public Vector2 foodRel, predatorRel; }
     private VisionReadout ScanVision() {
         VisionReadout result = new VisionReadout(); float food = float.MaxValue, predator = float.MaxValue; Vector2 origin = transform.position;
-        foreach (Collider2D hit in Physics2D.OverlapCircleAll(origin, 8f)) {
+        int hitCount = Physics2D.OverlapCircle(origin, 8f, VisionFilter, visionHits);
+        for (int index = 0; index < hitCount; index++) {
+            Collider2D hit = visionHits[index];
+            if (hit == null) continue;
             if (hit.attachedRigidbody == rb) continue; Vector2 rel = (Vector2)hit.transform.position-origin; float dist = rel.sqrMagnitude;
             if (hit.CompareTag("Food") && dist < food) { food=dist; result.food=true; result.foodRel=rel; }
             if (hit.CompareTag("Predator") && dist < predator) { predator=dist; result.predator=true; result.predatorRel=rel; }

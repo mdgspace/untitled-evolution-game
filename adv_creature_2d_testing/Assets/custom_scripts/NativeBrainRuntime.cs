@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using UnityEngine;
@@ -8,515 +7,200 @@ using UnityEngine;
 [Serializable]
 public sealed class NativeBrainWeights
 {
-    public int version = 2;
-    public float[] m1Input;
-    public float[] m1Hidden;
-    public float[] m1Output;
-    public float[] m2Input;
-    public float[] m2Middle;
-    public float[] m2Deep;
-    public float[] m2Extra;
-    public float[] m2Ultra;
-    public float[] m2Final;
-    public float[] m2History;
-    public float[] m2Output;
-    public float[] m2Refine;
-    public float[] m3Input;
-    public float[] m3Middle;
-    public float[] m3Deep;
-    public float[] m3Extra;
-    public float[] m3History;
-    public float[] m3Output;
-    public float[] m3State;
-    public float[] m3Action;
-    public float[] m2Moment;
-    public float[] m3Moment;
+    public int version = 13;
+    public float[] m1Input, m1Residual, m1Output, m1Bias;
+    public float[] m2Context, m2Joint, m2Position, m2AttentionQuery, m2AttentionKey, m2AttentionValue, m2AttentionQuery2, m2AttentionKey2, m2AttentionValue2, m2Fusion, m2Residual, m2Deep1, m2Deep2, m2Deep3, m2Output, m2Bias;
+    public float[] m3Context, m3Joint, m3Position, m3AttentionQuery, m3AttentionKey, m3AttentionValue, m3AttentionQuery2, m3AttentionKey2, m3AttentionValue2, m3Fusion, m3Residual, m3Deep1, m3Deep2, m3Deep3, m3Output, m3Bias;
 
     public static NativeBrainWeights Create(int seed)
     {
-        System.Random random = new System.Random(seed);
-        NativeBrainWeights w = new NativeBrainWeights {
-            m1Input = Create(random, 28 * 16 * 3), m1Hidden = Create(random, 16 * 16 * 3), m1Output = Create(random, 16 * 2),
-            m2Input = Create(random, 21 * 16), m2Middle = Create(random, 32 * 16), m2Deep = Create(random, 16 * 16), m2Extra = Create(random, 16 * 16), m2Ultra = Create(random, 16 * 16), m2Final = Create(random, 16 * 16), m2History = Create(random, 16 * 16 * 3), m2Output = Create(random, 16 * NativeCreatureModel.PlanningHorizon), m2Refine = Create(random, (16 + NativeCreatureModel.ConsequenceSize) * NativeCreatureModel.PlanningHorizon),
-            m3Input = Create(random, 13 * 16), m3Middle = Create(random, 16 * 16), m3Deep = Create(random, 16 * 16), m3Extra = Create(random, 16 * 16), m3History = Create(random, 16 * 16 * 3), m3Output = Create(random, 16 * NativeCreatureModel.M3OutputSize), m3State = Create(random, NativeCreatureModel.SimulatedStateSize * NativeCreatureModel.M3OutputSize), m3Action = Create(random, NativeCreatureModel.M3OutputSize), m2Moment = new float[16 * NativeCreatureModel.PlanningHorizon], m3Moment = new float[16 * NativeCreatureModel.M3OutputSize]
+        var r = new System.Random(seed); int h = NativeCreatureModel.Hidden;
+        return new NativeBrainWeights {
+            m1Input = Xavier(r, NativeCreatureModel.M1InputSize, h), m1Residual = Xavier(r, h, h), m1Output = Xavier(r, h, 2), m1Bias = new float[h * 2 + 2],
+            m2Context = Xavier(r, NativeCreatureModel.M2ContextSize, h), m2Joint = Xavier(r, NativeCreatureModel.JointFeatureSize, h), m2Position = Xavier(r, 2, h), m2AttentionQuery = Xavier(r, h, h), m2AttentionKey = Xavier(r, h, h), m2AttentionValue = Xavier(r, h, h), m2AttentionQuery2 = Xavier(r, h, h), m2AttentionKey2 = Xavier(r, h, h), m2AttentionValue2 = Xavier(r, h, h), m2Fusion = Xavier(r, h * 2, h), m2Residual = Xavier(r, h, h), m2Deep1 = Xavier(r, h, h), m2Deep2 = Xavier(r, h, h), m2Deep3 = Xavier(r, h, h), m2Output = Xavier(r, h, NativeCreatureModel.PlanningHorizon), m2Bias = new float[h * 7 + NativeCreatureModel.PlanningHorizon],
+            m3Context = Xavier(r, NativeCreatureModel.M3ContextSize, h), m3Joint = Xavier(r, NativeCreatureModel.M3JointInputSize, h), m3Position = Xavier(r, 2, h), m3AttentionQuery = Xavier(r, h, h), m3AttentionKey = Xavier(r, h, h), m3AttentionValue = Xavier(r, h, h), m3AttentionQuery2 = Xavier(r, h, h), m3AttentionKey2 = Xavier(r, h, h), m3AttentionValue2 = Xavier(r, h, h), m3Fusion = Xavier(r, h * 2, h), m3Residual = Xavier(r, h, h), m3Deep1 = Xavier(r, h, h), m3Deep2 = Xavier(r, h, h), m3Deep3 = Xavier(r, h, h), m3Output = Xavier(r, h, NativeCreatureModel.M3OutputSize), m3Bias = new float[h * 7 + NativeCreatureModel.M3OutputSize]
         };
-        return w;
     }
-
-    private static float[] Create(System.Random random, int count)
-    {
-        float[] values = new float[count];
-        for (int i = 0; i < values.Length; i++) values[i] = (float)((random.NextDouble() - .5) * .15);
-        return values;
-    }
-
+    private static float[] Xavier(System.Random r, int input, int output) { float limit = Mathf.Sqrt(6f / (input + output)); float[] a = new float[input * output]; for (int i = 0; i < a.Length; i++) a[i] = ((float)r.NextDouble() * 2f - 1f) * limit; return a; }
     public NativeBrainWeights Clone() => JsonConvert.DeserializeObject<NativeBrainWeights>(JsonConvert.SerializeObject(this));
-    public void CopyFrom(NativeBrainWeights source) { m1Input = (float[])source.m1Input.Clone(); m1Hidden = (float[])source.m1Hidden.Clone(); m1Output = (float[])source.m1Output.Clone(); m2Input = (float[])source.m2Input.Clone(); m2Middle = (float[])source.m2Middle.Clone(); m2Deep = (float[])source.m2Deep.Clone(); m2Extra = (float[])source.m2Extra.Clone(); m2Ultra = (float[])source.m2Ultra.Clone(); m2Final = (float[])source.m2Final.Clone(); m2History = (float[])source.m2History.Clone(); m2Output = (float[])source.m2Output.Clone(); m2Refine = (float[])source.m2Refine.Clone(); m3Input = (float[])source.m3Input.Clone(); m3Middle = (float[])source.m3Middle.Clone(); m3Deep = (float[])source.m3Deep.Clone(); m3Extra = (float[])source.m3Extra.Clone(); m3History = (float[])source.m3History.Clone(); m3Output = (float[])source.m3Output.Clone(); m3State = (float[])source.m3State.Clone(); m3Action = (float[])source.m3Action.Clone(); m2Moment = source.m2Moment == null ? new float[16 * NativeCreatureModel.PlanningHorizon] : (float[])source.m2Moment.Clone(); m3Moment = source.m3Moment == null ? new float[16 * NativeCreatureModel.M3OutputSize] : (float[])source.m3Moment.Clone(); }
-    public void Mutate(System.Random random, float amount = .05f)
-    {
-        foreach (float[] array in Arrays()) for (int i = 0; i < array.Length; i++) if (random.NextDouble() < .08) array[i] += (float)((random.NextDouble() - .5) * amount);
-    }
-    public void CopyM3From(NativeBrainWeights source)
-    {
-        Array.Copy(source.m3Input, m3Input, m3Input.Length); Array.Copy(source.m3Middle, m3Middle, m3Middle.Length); Array.Copy(source.m3Deep, m3Deep, m3Deep.Length); Array.Copy(source.m3Extra, m3Extra, m3Extra.Length);
-        Array.Copy(source.m3History, m3History, m3History.Length); Array.Copy(source.m3Output, m3Output, m3Output.Length); Array.Copy(source.m3State, m3State, m3State.Length); Array.Copy(source.m3Action, m3Action, m3Action.Length);
-        if (m3Moment == null) m3Moment = new float[16 * NativeCreatureModel.M3OutputSize]; Array.Copy(source.m3Moment ?? Array.Empty<float>(), m3Moment, Mathf.Min(m3Moment.Length, source.m3Moment?.Length ?? 0));
-    }
-    public bool IsFinite() => Arrays().All(array => array != null && array.All(value => !float.IsNaN(value) && !float.IsInfinity(value)));
-    public IEnumerable<float[]> Arrays() { yield return m1Input; yield return m1Hidden; yield return m1Output; yield return m2Input; yield return m2Middle; yield return m2Deep; yield return m2Extra; yield return m2Ultra; yield return m2Final; yield return m2History; yield return m2Output; yield return m2Refine; yield return m3Input; yield return m3Middle; yield return m3Deep; yield return m3Extra; yield return m3History; yield return m3Output; yield return m3State; yield return m3Action; }
+    public void CopyFrom(NativeBrainWeights source) { var copy = source.Clone(); foreach (var f in typeof(NativeBrainWeights).GetFields()) f.SetValue(this, f.GetValue(copy)); }
+    public void CopyM3From(NativeBrainWeights source) { foreach (var pair in source.M3Parameters()) typeof(NativeBrainWeights).GetField("m3" + char.ToUpperInvariant(pair.Key[0]) + pair.Key.Substring(1)).SetValue(this, (float[])pair.Value.Clone()); }
+    public void Mutate(System.Random r, float amount = .05f) { MutateM1(r, amount); MutateM2(r, amount); }
+    public void MutateM1(System.Random r, float amount) { foreach (float[] a in new[] { m1Input, m1Residual, m1Output, m1Bias }) MutateArray(a, r, amount, .04f); }
+    public void MutateM2(System.Random r, float amount, float hiddenProbability = .03f, float headProbability = .12f) { foreach (var p in M2Parameters()) MutateArray(p.Value, r, amount, p.Key == "output" ? headProbability : hiddenProbability); }
+    private static void MutateArray(float[] a, System.Random r, float amount, float probability) { for (int i = 0; i < a.Length; i++) if (r.NextDouble() < probability) a[i] = Mathf.Clamp(a[i] + ((float)r.NextDouble() - .5f) * amount, -4f, 4f); }
+    public bool IsFinite() => Arrays().All(a => a != null && a.All(NativeCreatureModel.IsFinite));
+    public IEnumerable<float[]> ControllerArrays() { yield return m1Input; yield return m1Residual; yield return m1Output; yield return m1Bias; foreach (var p in M2Parameters()) yield return p.Value; }
+    public IEnumerable<float[]> DynamicsArrays() => M3Parameters().Select(p => p.Value);
+    public IEnumerable<float[]> Arrays() => ControllerArrays().Concat(DynamicsArrays());
+    public IEnumerable<KeyValuePair<string,float[]>> M2Parameters() { yield return P("context",m2Context); yield return P("joint",m2Joint); yield return P("position",m2Position); yield return P("attentionQuery",m2AttentionQuery); yield return P("attentionKey",m2AttentionKey); yield return P("attentionValue",m2AttentionValue); yield return P("attentionQuery2",m2AttentionQuery2); yield return P("attentionKey2",m2AttentionKey2); yield return P("attentionValue2",m2AttentionValue2); yield return P("fusion",m2Fusion); yield return P("residual",m2Residual); yield return P("deep1",m2Deep1); yield return P("deep2",m2Deep2); yield return P("deep3",m2Deep3); yield return P("output",m2Output); yield return P("bias",m2Bias); }
+    public IEnumerable<KeyValuePair<string,float[]>> M3Parameters() { yield return P("context",m3Context); yield return P("joint",m3Joint); yield return P("position",m3Position); yield return P("attentionQuery",m3AttentionQuery); yield return P("attentionKey",m3AttentionKey); yield return P("attentionValue",m3AttentionValue); yield return P("attentionQuery2",m3AttentionQuery2); yield return P("attentionKey2",m3AttentionKey2); yield return P("attentionValue2",m3AttentionValue2); yield return P("fusion",m3Fusion); yield return P("residual",m3Residual); yield return P("deep1",m3Deep1); yield return P("deep2",m3Deep2); yield return P("deep3",m3Deep3); yield return P("output",m3Output); yield return P("bias",m3Bias); }
+    private static KeyValuePair<string,float[]> P(string n,float[] v) => new KeyValuePair<string,float[]>(n,v);
 }
 
 public sealed class NativeCreatureModel
 {
-    public const int History = 4, MaxLimbs = 8, MaxPathDepth = 4, Hidden = 16;
-    public const int PlanningHorizon = 5, PlannerRollouts = 3, ActionTicks = 4, GoalWindowTicks = PlanningHorizon * ActionTicks;
-    public const int M3OutputSize = 5, SimulatedStateSize = 5, ConsequenceSize = 6;
-    public const int M2InputSize = 21;
-    // These periods are measured in M2 decisions. Halving them preserves the
-    // original real-time gait periods after each decision now lasts 4 ticks.
-    public static readonly int[] M2PhasePeriods = { 4, 8, 16, 32 };
-    public const float MinimumActionDegrees = .75f;
-    public const float MaximumActionDegrees = 8f;
-    // M1 begins close to zero, so dividing by the instantaneous goal magnitude
-    // turned harmless early prediction errors into five-digit losses.  Goals are
-    // bounded to 0.25 world units; use that fixed scale for a comparable loss.
-    public const float GoalNormalizationSquared = .25f * .25f;
-    public const int MinimumM2FitnessSamples = 50;
+    public const int Hidden=32, M2AttentionHeads=4, M3AttentionHeads=8, M2MlpHiddenLayers=5, M3MlpHiddenLayers=5, M2TransformerBlocks=2, M3TransformerBlocks=2, MaxLimbs=BodyMorphologyRules.MaxLimbs, MaxPathDepth=BodyMorphologyRules.MaxDepth, PlanningHorizon=5, ActionTicks=4, SequenceTicks=20, GoalWindowTicks=1320, M1GoalWindowTicks=20;
+    public const int M1InputSize=28, M2ContextSize=8, M3ContextSize=6, JointFeatureSize=4, PositionEncodingSize=2, M3JointInputSize=9, M3OutputSize=10;
+    public const float MaximumActionDegrees=8f, MinimumActionDegrees=.75f, GoalMagnitude=4f, CurriculumGoalMagnitude=12f, M2LearningRate=.0003f, M3LearningRate=.0003f, ActionEnergyWeight=.01f, AntiZeroWeight=4f, MotionThreshold=.01f;
+    public const int ActionBiasEndTick=13333, ExplorationDecayUpdates=10000, MinimumM2FitnessSamples=50, M2FitnessWindow=250, FixedGoalGenerations=1500, StartupSafeguardGenerations=200;
+    public const float ExplorationStartSigma=.5f, ExplorationFloorSigma=.05f;
+    public static readonly float[] GoalStepWeights={1f,1f,2f,4f,8f};
     public readonly NativeBrainWeights Weights;
-    public readonly float[] M1Hidden = new float[Hidden];
-    public readonly float[] M2Hidden = new float[Hidden];
-    public readonly float[] M3Hidden = new float[Hidden];
-    private readonly float[][] frameHistory = { new float[10], new float[10], new float[10], new float[10] };
-    private int historyCount;
-    private readonly System.Random exploration;
-    private readonly List<NativeDynamicsReplaySample> dynamicsReplay = new List<NativeDynamicsReplaySample>();
-    public float LastM2Loss { get; private set; } = float.PositiveInfinity;
-    public float LastM3Loss { get; private set; } = float.PositiveInfinity;
-    public float LastGroundPenalty { get; private set; }
-    public int M2LossSamples { get; private set; }
-    public float M2LossSum { get; private set; }
-    public int DynamicsReplayCount => dynamicsReplay.Count;
-    public float BodyFitness => M2LossSamples < MinimumM2FitnessSamples ? float.PositiveInfinity : M2LossSum / M2LossSamples;
+    public NativeOptimizerState M2Optimizer { get; private set; } = new NativeOptimizerState();
     public Vector2 CurrentGoal { get; private set; }
+    public Vector2 CurrentWorldGoal { get; private set; }
     public int GoalTicksRemaining { get; private set; }
-    public int LastPlannerRollouts { get; private set; }
-    public float LastRefinementGain { get; private set; }
-    public float LastPredictedGroundRisk { get; private set; }
-    public float LastPredictedPredatorRisk { get; private set; }
-    private float[] partialPlan = new float[PlanningHorizon * MaxLimbs];
-    private int partialPlanLimbCount;
-    private NativePredictedTransition pendingTransition;
+    public float LastM2Loss { get; private set; }=float.PositiveInfinity;
+    public float LastM2GoalLoss { get; private set; }=float.PositiveInfinity;
+    public float LastM2EnergyLoss { get; private set; }
+    public float LastM3Loss { get; private set; }=float.PositiveInfinity;
+    public float LastM3Mse { get; private set; }=float.PositiveInfinity;
+    public float LastM3RelativeLoss { get; private set; }
+    public NativePositionPrediction LastPrediction { get; private set; }
+    public int LeftLossSamples=>leftLosses.Count; public int RightLossSamples=>rightLosses.Count; public int M2LossSamples=>LeftLossSamples+RightLossSamples;
+    public float LeftProposalLoss=>Mean(leftLosses); public float RightProposalLoss=>Mean(rightLosses); public bool LeftTrialComplete=>LeftLossSamples>=MinimumM2FitnessSamples; public bool RightTrialComplete=>RightLossSamples>=MinimumM2FitnessSamples; public bool IsBidirectionallyVerified=>LeftTrialComplete&&RightTrialComplete;
+    public float BodyFitness=>BidirectionalFitness(LeftProposalLoss,LeftLossSamples,LeftTrialComplete,RightProposalLoss,RightLossSamples,RightTrialComplete);
+    public int LatchedDirection { get; private set; } public float LeftBestTrialProgress { get; private set; } public float RightBestTrialProgress { get; private set; }
+    private readonly Queue<float> leftLosses=new Queue<float>(), rightLosses=new Queue<float>(); private NativeDeterministicRng exploration; private int fixedGoalBlock=int.MinValue; private bool hasGoal,m1GoalAnchorInitialized; private Vector2 m1GoalAnchor;
+    public NativeCreatureModel(NativeBrainWeights weights,int seed=0){Weights=weights??NativeBrainWeights.Create(seed==0?Environment.TickCount:seed);exploration=new NativeDeterministicRng((ulong)(seed==0?Environment.TickCount:seed));}
 
-    public NativeCreatureModel(NativeBrainWeights weights, int seed = 0) { Weights = weights ?? NativeBrainWeights.Create(Environment.TickCount); exploration = new System.Random(seed == 0 ? Environment.TickCount : seed); }
-
-    // The real recurrent state advances only from observations.  Hypothetical
-    // plan rollouts clone their state, which keeps MPC imagination from
-    // contaminating the creature's physical-time memory.
-    public NativeActionPlan PlanActions(float[] global, Limb[] limbs, int controlStep, bool torsoTouchingGround, float normalizedEnergy, bool predatorContact)
+    public NativeObservation Observe(float[] global,Limb[] limbs,int tick,NativeLocalProprioception proprio,bool enableM1)
     {
-        if (GoalTicksRemaining <= 0)
-        {
-            float[] m1 = RunM1(global);
-            CurrentGoal = new Vector2(m1[0], m1[1]) * .25f;
-            GoalTicksRemaining = GoalWindowTicks;
-        }
-        int limbCount = Mathf.Min(limbs.Length, MaxLimbs);
-        float[][] encoded = EncodeM2(limbs, controlStep, out _, out _);
-        AdvanceM3History(limbs);
-        float[,] plan = new float[PlanningHorizon, MaxLimbs];
-        for (int limb = 0; limb < limbCount; limb++)
-        {
-            float[] raw = Dense(encoded[limb], Weights.m2Output, Hidden, PlanningHorizon, true);
-            for (int step = 0; step < PlanningHorizon; step++) plan[step, limb] = BoundedAction(raw[step]);
-        }
-
-        int arrivalStep = Mathf.Clamp(Mathf.CeilToInt(GoalTicksRemaining / (float)ActionTicks), 1, PlanningHorizon);
-        NativePlanRollout rollout = RolloutPlan(limbs, plan, torsoTouchingGround, normalizedEnergy, predatorContact);
-        float initialLoss = PlannerLoss(rollout, arrivalStep);
-        for (int pass = 1; pass < PlannerRollouts; pass++)
-        {
-            RefinePlan(plan, encoded, rollout);
-            rollout = RolloutPlan(limbs, plan, torsoTouchingGround, normalizedEnergy, predatorContact);
-        }
-        LastPlannerRollouts = PlannerRollouts;
-        LastM2Loss = PlannerLoss(rollout, arrivalStep);
-        LastRefinementGain = initialLoss - LastM2Loss;
-        LastGroundPenalty = rollout.steps[0].groundRisk * 2f;
-        LastPredictedGroundRisk = rollout.steps[0].groundRisk;
-        LastPredictedPredatorRisk = rollout.steps[0].predatorRisk;
-        M2LossSum += LastM2Loss; M2LossSamples++;
-        ApplyPlannerGradient(plan, encoded, rollout, arrivalStep);
-        pendingTransition = rollout.steps[0].prediction;
-        partialPlanLimbCount = limbCount;
-        for (int step = 0; step < PlanningHorizon; step++) for (int limb = 0; limb < MaxLimbs; limb++) partialPlan[step * MaxLimbs + limb] = plan[step, limb];
-        GoalTicksRemaining = Mathf.Max(0, GoalTicksRemaining - ActionTicks);
-        return new NativeActionPlan(plan, limbCount, CurrentGoal, arrivalStep);
+        if(enableM1){if(!m1GoalAnchorInitialized){m1GoalAnchor=proprio.worldPosition;m1GoalAnchorInitialized=true;}Vector2 offset=SoftBiasedGoal(RunM1(global))*GoalMagnitude;CurrentWorldGoal=new Vector2(Mathf.Clamp(m1GoalAnchor.x+offset.x,-WorldLayout.WorldHalfWidth+1f,WorldLayout.WorldHalfWidth-1f),m1GoalAnchor.y+offset.y);GoalTicksRemaining=SequenceTicks;hasGoal=true;}
+        else{m1GoalAnchorInitialized=false;int block=Mathf.Max(0,tick)/GoalWindowTicks;if(!hasGoal||block!=fixedGoalBlock){CurrentWorldGoal=new Vector2(Mathf.Clamp(proprio.worldPosition.x+FixedTrainingGoal(tick).x,-WorldLayout.WorldHalfWidth+1f,WorldLayout.WorldHalfWidth-1f),FixedGoalWorldHeight);fixedGoalBlock=block;hasGoal=true;}GoalTicksRemaining=GoalWindowTicks-Mathf.Max(0,tick)%GoalWindowTicks;}
+        Vector2 worldOffset=CurrentWorldGoal-proprio.worldPosition;CurrentGoal=proprio.WorldToTorsoVector(worldOffset);LatchedDirection=ClassifyWorldGoalDirection(worldOffset.x);int count=Mathf.Min(limbs?.Length??0,MaxLimbs);
+        var o=new NativeObservation{torsoWithGoal=TorsoFeatures(proprio,CurrentGoal,true),torsoWithoutGoal=TorsoFeatures(proprio,Vector2.zero,false),jointFeatures=new float[MaxLimbs*JointFeatureSize],positionEncodings=new float[MaxLimbs*2],limbCount=count,goal=CurrentGoal,worldGoal=CurrentWorldGoal,startWorldPosition=proprio.worldPosition,startWorldRotationDegrees=proprio.worldRotationDegrees,tick=tick};
+        for(int i=0;i<count;i++){Array.Copy(JointFeatures(limbs[i].JointAngle,limbs[i].JointSpeed),0,o.jointFeatures,i*4,4);Array.Copy(JointPositionEncoding(limbs[i].genePath,limbs[i].attachmentSlot),0,o.positionEncodings,i*2,2);}return o;
     }
 
-    private float[][] EncodeM2(Limb[] limbs, int controlStep, out float[] history, out float[] context)
+    public NativeActionSequence OptimizeAndPlan(NativeObservation observation,NativeBrainWeights sharedM3,int sharedM3Updates)
     {
-        int limbCount = Mathf.Min(limbs.Length, MaxLimbs);
-        float[][] baseEncoding = new float[limbCount][]; float[] gruInput = new float[Hidden];
-        for (int i = 0; i < limbCount; i++) { baseEncoding[i] = Dense(M2LimbFeatures(limbs[i], CurrentGoal, controlStep), Weights.m2Input, M2InputSize, Hidden, true); for (int h = 0; h < Hidden; h++) gruInput[h] += baseEncoding[i][h]; }
-        if (limbCount > 0) for (int h = 0; h < Hidden; h++) gruInput[h] /= limbCount;
-        history = RunGru(gruInput, M2Hidden, Weights.m2History);
-        float[][] encoded = new float[limbCount][]; context = new float[Hidden];
-        for (int i = 0; i < limbCount; i++)
-        {
-            float[] joined = new float[Hidden * 2]; Array.Copy(baseEncoding[i], joined, Hidden); Array.Copy(history, 0, joined, Hidden, Hidden);
-            encoded[i] = Dense(Dense(Dense(Dense(Dense(joined, Weights.m2Middle, Hidden * 2, Hidden, true), Weights.m2Deep, Hidden, Hidden, true), Weights.m2Extra, Hidden, Hidden, true), Weights.m2Ultra, Hidden, Hidden, true), Weights.m2Final, Hidden, Hidden, true);
-            for (int h = 0; h < Hidden; h++) context[h] += encoded[i][h];
-        }
-        if (limbCount > 0) for (int h = 0; h < Hidden; h++) context[h] /= limbCount;
-        return encoded;
+        var before=ForwardM2(observation,Weights);float bias=ActionBiasStrength(observation.tick);float[,] biased=ApplyActionBias(before.actions,observation,bias);var predicted=ForwardM3(observation,biased,sharedM3);float[] predictionGradient=new float[M3OutputSize];
+        M2Loss(predicted.prediction,observation.goal,biased,observation.limbCount,predictionGradient,out _,out _);float[,] actionGradient=BackwardM3(predicted,predictionGradient,sharedM3,null);AddEnergyGradient(actionGradient,biased,observation.limbCount);for(int s=0;s<5;s++)for(int l=0;l<observation.limbCount;l++)actionGradient[s,l]*=1f-bias;
+        var gradient=Zero(Weights.M2Parameters());BackwardM2(before,actionGradient,Weights,gradient);ApplyAdam(Weights.M2Parameters(),gradient,M2Optimizer,M2LearningRate);
+        var after=ForwardM2(observation,Weights);float[,] executed=ApplyActionBias(after.actions,observation,bias);float sigma=ExplorationSigma(sharedM3Updates);for(int s=0;s<5;s++)for(int l=0;l<observation.limbCount;l++)executed[s,l]=Mathf.Clamp(executed[s,l]+Gaussian()*sigma,-8f,8f);
+        var finalPrediction=ForwardM3(observation,executed,sharedM3);LastM2Loss=M2Loss(finalPrediction.prediction,observation.goal,executed,observation.limbCount,null,out float goalLoss,out float energyLoss);LastM2GoalLoss=goalLoss;LastM2EnergyLoss=energyLoss;LastPrediction=new NativePositionPrediction((float[])finalPrediction.prediction.Clone());RecordFitness(LastM2Loss);
+        return new NativeActionSequence(executed,observation.limbCount,observation.goal,observation.worldGoal,LastPrediction,bias,sigma);
     }
 
-    private void AdvanceM3History(Limb[] limbs)
+    public float TrainSharedM3(NativeCompletedSequence sample,NativeBrainWeights sharedM3,NativeOptimizerState optimizer)
+    {var cache=ForwardM3(sample.observation,sample.ActionMatrix(),sharedM3);float[] g=new float[10];float loss=M3Loss(cache.prediction,sample.actualPositions,g,out float mse,out float relative);var gradients=Zero(sharedM3.M3Parameters());BackwardM3(cache,g,sharedM3,gradients);ApplyAdam(sharedM3.M3Parameters(),gradients,optimizer,M3LearningRate);LastM3Loss=loss;LastM3Mse=mse;LastM3RelativeLoss=relative;return loss;}
+
+    public static float[] PredictM3ForTesting(NativeObservation observation,float[,] actions,NativeBrainWeights weights)=>(float[])ForwardM3(observation,actions,weights).prediction.Clone();
+    public static float[] M3GradientForTesting(NativeCompletedSequence sample,NativeBrainWeights weights,string parameterName){var cache=ForwardM3(sample.observation,sample.ActionMatrix(),weights);float[] outputGradient=new float[10];M3Loss(cache.prediction,sample.actualPositions,outputGradient,out _,out _);var gradients=Zero(weights.M3Parameters());BackwardM3(cache,outputGradient,weights,gradients);return gradients[parameterName];}
+    public static float M3LossForTesting(NativeCompletedSequence sample,NativeBrainWeights weights){float[] prediction=ForwardM3(sample.observation,sample.ActionMatrix(),weights).prediction;return M3Loss(prediction,sample.actualPositions,null,out _,out _);}
+    public static float[] M2GradientForTesting(NativeObservation observation,NativeBrainWeights m2,NativeBrainWeights m3,string parameterName){var cache=ForwardM2(observation,m2);float bias=ActionBiasStrength(observation.tick);float[,] actions=ApplyActionBias(cache.actions,observation,bias);var prediction=ForwardM3(observation,actions,m3);float[] pg=new float[10];M2Loss(prediction.prediction,observation.goal,actions,observation.limbCount,pg,out _,out _);float[,] ag=BackwardM3(prediction,pg,m3,null);AddEnergyGradient(ag,actions,observation.limbCount);for(int s=0;s<5;s++)for(int l=0;l<observation.limbCount;l++)ag[s,l]*=1f-bias;var gradients=Zero(m2.M2Parameters());BackwardM2(cache,ag,m2,gradients);return gradients[parameterName];}
+    public static float M2LossForTesting(NativeObservation observation,NativeBrainWeights m2,NativeBrainWeights m3){var cache=ForwardM2(observation,m2);float[,] actions=ApplyActionBias(cache.actions,observation,ActionBiasStrength(observation.tick));var prediction=ForwardM3(observation,actions,m3);return M2Loss(prediction.prediction,observation.goal,actions,observation.limbCount,null,out _,out _);}
+
+    public static float M3Loss(float[] predicted,float[] actual,float[] gradient,out float mse,out float relative)
+    {mse=0f;relative=0f;if(gradient!=null)Array.Clear(gradient,0,gradient.Length);for(int i=0;i<10;i++){float e=predicted[i]-actual[i];mse+=e*e/10f;if(gradient!=null)gradient[i]+=e/5f;}for(int s=0;s<5;s++){float tx=actual[s*2],ty=actual[s*2+1],d=tx*tx+ty*ty;if(d<=MotionThreshold*MotionThreshold)continue;float x=predicted[s*2]-tx,y=predicted[s*2+1]-ty,den=d+MotionThreshold*MotionThreshold;relative+=AntiZeroWeight*(x*x+y*y)/(den*5f);if(gradient!=null){gradient[s*2]+=2f*AntiZeroWeight*x/(den*5f);gradient[s*2+1]+=2f*AntiZeroWeight*y/(den*5f);}}return mse+relative;}
+    public static float M2GoalLoss(float[] predicted,Vector2 goal){float total=GoalStepWeights.Sum(),loss=0f;for(int s=0;s<5;s++){float x=predicted[s*2]-goal.x,y=predicted[s*2+1]-goal.y;loss+=GoalStepWeights[s]*(x*x+y*y)/total;}return loss;}
+    private static float M2Loss(float[] predicted,Vector2 goal,float[,] actions,int activeLimbs,float[] gradient,out float goalLoss,out float energyLoss){float total=GoalStepWeights.Sum();goalLoss=0f;if(gradient!=null)Array.Clear(gradient,0,gradient.Length);for(int s=0;s<5;s++){float x=predicted[s*2]-goal.x,y=predicted[s*2+1]-goal.y,k=GoalStepWeights[s]/total;goalLoss+=k*(x*x+y*y);if(gradient!=null){gradient[s*2]=2f*k*x;gradient[s*2+1]=2f*k*y;}}int limbs=Mathf.Clamp(activeLimbs,0,actions.GetLength(1)),count=Mathf.Max(1,actions.GetLength(0)*limbs);energyLoss=0f;for(int s=0;s<actions.GetLength(0);s++)for(int l=0;l<limbs;l++){float n=actions[s,l]/8f;energyLoss+=ActionEnergyWeight*n*n/count;}return goalLoss+energyLoss;}
+    private static void AddEnergyGradient(float[,] g,float[,] a,int activeLimbs){int limbs=Mathf.Clamp(activeLimbs,0,a.GetLength(1)),count=Mathf.Max(1,a.GetLength(0)*limbs);for(int s=0;s<a.GetLength(0);s++)for(int l=0;l<limbs;l++)g[s,l]+=2f*ActionEnergyWeight*a[s,l]/(64f*count);}
+
+    public static float ActionBiasStrength(int tick){if(tick>=ActionBiasEndTick)return 0f;double p=Math.Max(0d,Math.Min(1d,tick/(double)ActionBiasEndTick));return Math.Max(1e-6f,(float)(.25d*(1d+Math.Cos(Math.PI*p))));}
+    public static float ExplorationSigma(int updates){float p=Mathf.Clamp01(updates/(float)ExplorationDecayUpdates);return p>=1f?ExplorationFloorSigma:ExplorationStartSigma*Mathf.Pow(ExplorationFloorSigma/ExplorationStartSigma,p);}
+    public static float BiasAction(float action,float strength,int parity,int step){if(strength<=0f)return Mathf.Clamp(action,-8f,8f);float sign=Mathf.Abs(action)>1e-7f?Mathf.Sign(action):(((parity+step)&1)==0?1f:-1f);return Mathf.Clamp(sign*Mathf.Lerp(Mathf.Abs(action),.75f,strength),-8f,8f);}
+    private static float[,] ApplyActionBias(float[,] raw,NativeObservation o,float strength){var result=new float[5,MaxLimbs];for(int s=0;s<5;s++)for(int l=0;l<o.limbCount;l++){int parity=Mathf.RoundToInt((o.positionEncodings[l*2]+1f)*31f+(o.positionEncodings[l*2+1]+1f)*17f);result[s,l]=BiasAction(raw[s,l],strength,parity,s);}return result;}
+    public static float[] JointFeatures(float angleDegrees,float speed){float a=angleDegrees*Mathf.Deg2Rad,w=Mathf.Clamp(speed/720f,-1f,1f);return new[]{Mathf.Sin(a),Mathf.Cos(a),w*Mathf.Cos(a),-w*Mathf.Sin(a)};}
+    public static float[] JointPositionEncoding(int[] path,int slot){int hash=17;if(path!=null)foreach(int value in path)hash=unchecked(hash*31+value+1);hash=unchecked(hash*31+slot+1);float p=(hash&4095)*(2f*Mathf.PI/4096f);return new[]{Mathf.Sin(p),Mathf.Cos(p)};}
+    public const float FixedGoalWorldHeight=WorldLayout.GroundTop+.5f;
+    public static Vector2 FixedTrainingGoal(int tick)=>new Vector2(((Mathf.Max(0,tick)/GoalWindowTicks)&1)==0?CurriculumGoalMagnitude:-CurriculumGoalMagnitude,0f);
+    public static int ClassifyWorldGoalDirection(float x)=>x<-.15f?-1:x>.15f?1:0;
+    public static float BidirectionalFitness(float left,int ln,bool lc,float right,int rn,bool rc)=>ln<MinimumM2FitnessSamples||rn<MinimumM2FitnessSamples||!lc||!rc||!IsFinite(left)||!IsFinite(right)?float.PositiveInfinity:Mathf.Max(left,right);
+    public static bool IsFinite(float value)=>!float.IsNaN(value)&&!float.IsInfinity(value);
+
+    private void RecordFitness(float loss){if(!IsFinite(loss)||LatchedDirection==0)return;var q=LatchedDirection<0?leftLosses:rightLosses;q.Enqueue(loss);while(q.Count>M2FitnessWindow)q.Dequeue();}
+    public void RecordMeasuredProgress(Vector2 d){if(LatchedDirection<0)LeftBestTrialProgress=Mathf.Max(LeftBestTrialProgress,-d.x);else if(LatchedDirection>0)RightBestTrialProgress=Mathf.Max(RightBestTrialProgress,d.x);}
+    public void RepairFrom(NativeBrainWeights source){Weights.CopyFrom(source);M2Optimizer=new NativeOptimizerState();}
+    public void CopyM3From(NativeBrainWeights source)=>Weights.CopyM3From(source);
+    public NativeCreatureSave Capture()=>new NativeCreatureSave{weights=Weights,m2Optimizer=M2Optimizer,goalX=CurrentGoal.x,goalY=CurrentGoal.y,worldGoalX=CurrentWorldGoal.x,worldGoalY=CurrentWorldGoal.y,goalTicksRemaining=GoalTicksRemaining,fixedGoalBlock=fixedGoalBlock,m1AnchorX=m1GoalAnchor.x,m1AnchorY=m1GoalAnchor.y,m1AnchorInitialized=m1GoalAnchorInitialized,explorationState=exploration.State,leftLosses=leftLosses.ToList(),rightLosses=rightLosses.ToList(),leftBestProgress=LeftBestTrialProgress,rightBestProgress=RightBestTrialProgress};
+    public void Restore(NativeCreatureSave save){if(save==null)return;M2Optimizer=save.m2Optimizer??new NativeOptimizerState();CurrentGoal=new Vector2(save.goalX,save.goalY);CurrentWorldGoal=new Vector2(save.worldGoalX,save.worldGoalY);GoalTicksRemaining=save.goalTicksRemaining;fixedGoalBlock=save.fixedGoalBlock;m1GoalAnchor=new Vector2(save.m1AnchorX,save.m1AnchorY);m1GoalAnchorInitialized=save.m1AnchorInitialized;hasGoal=true;exploration.State=save.explorationState;leftLosses.Clear();rightLosses.Clear();foreach(float v in (save.leftLosses??new List<float>()).TakeLast(M2FitnessWindow))leftLosses.Enqueue(v);foreach(float v in (save.rightLosses??new List<float>()).TakeLast(M2FitnessWindow))rightLosses.Enqueue(v);LeftBestTrialProgress=save.leftBestProgress;RightBestTrialProgress=save.rightBestProgress;}
+
+    private Vector2 RunM1(float[] input){var a=ForwardDense(input,Weights.m1Input,Weights.m1Bias,0,M1InputSize,Hidden,true).output;var b=ForwardDense(a,Weights.m1Residual,Weights.m1Bias,Hidden,Hidden,Hidden,true).output;for(int i=0;i<Hidden;i++)a[i]=(float)Math.Tanh(a[i]+b[i]);var o=ForwardDense(a,Weights.m1Output,Weights.m1Bias,Hidden*2,Hidden,2,false).output;return new Vector2((float)Math.Tanh(o[0]),(float)Math.Tanh(o[1]));}
+    private static Vector2 SoftBiasedGoal(Vector2 raw){float m=Mathf.Clamp01(raw.magnitude);Vector2 d=m>.0001f?raw/m:Vector2.right;return d*(.35f+.65f*m);}
+    private static float[] TorsoFeatures(NativeLocalProprioception p,Vector2 goal,bool includeGoal){float a=p.worldRotationDegrees*Mathf.Deg2Rad;return includeGoal?new[]{p.worldPosition.x/WorldLayout.WorldHalfWidth,p.worldPosition.y/WorldLayout.SpawnRowSpacing,p.localLinearVelocity.x,p.localLinearVelocity.y,Mathf.Sin(a),Mathf.Cos(a),goal.x,goal.y}:new[]{p.worldPosition.x/WorldLayout.WorldHalfWidth,p.worldPosition.y/WorldLayout.SpawnRowSpacing,p.localLinearVelocity.x,p.localLinearVelocity.y,Mathf.Sin(a),Mathf.Cos(a)};}
+    private float Gaussian(){float a=Mathf.Max(1e-7f,exploration.NextFloat()),b=exploration.NextFloat();return Mathf.Sqrt(-2f*Mathf.Log(a))*Mathf.Cos(2f*Mathf.PI*b);}
+    private static float Mean(IEnumerable<float> values){int n=0;float sum=0f;foreach(float v in values){sum+=v;n++;}return n==0?float.PositiveInfinity:sum/n;}
+
+    private static M2Cache ForwardM2(NativeObservation o,NativeBrainWeights w)
     {
-        int limbCount = Mathf.Min(limbs.Length, MaxLimbs);
-        float[] context = new float[Hidden];
-        for (int limb = 0; limb < limbCount; limb++)
-        {
-            float[] encoded = Dense(Dense(Dense(Dense(BaseLimbFeatures(limbs[limb]), Weights.m3Input, 13, Hidden, true), Weights.m3Middle, Hidden, Hidden, true), Weights.m3Deep, Hidden, Hidden, true), Weights.m3Extra, Hidden, Hidden, true);
-            for (int h = 0; h < Hidden; h++) context[h] += encoded[h];
-        }
-        if (limbCount > 0) for (int h = 0; h < Hidden; h++) context[h] /= limbCount;
-        RunGru(context, M3Hidden, Weights.m3History);
+        var c=new M2Cache{observation=o,context=ForwardDense(o.torsoWithGoal,w.m2Context,w.m2Bias,0,M2ContextSize,Hidden,true),limbs=new JointCache[o.limbCount],actions=new float[5,MaxLimbs]};float[][] tokens=new float[o.limbCount][];
+        for(int l=0;l<o.limbCount;l++){c.limbs[l]=ForwardJoint(Slice(o.jointFeatures,l*4,4),Slice(o.positionEncodings,l*2,2),w.m2Joint,w.m2Position,w.m2Bias,Hidden);tokens[l]=c.limbs[l].output;}
+        c.attention=ForwardAttention(tokens,w.m2AttentionQuery,w.m2AttentionKey,w.m2AttentionValue,M2AttentionHeads);c.attention2=ForwardAttention(c.attention.output,w.m2AttentionQuery2,w.m2AttentionKey2,w.m2AttentionValue2,M2AttentionHeads);c.heads=new HeadCache[o.limbCount];
+        for(int l=0;l<o.limbCount;l++){c.heads[l]=ForwardHead(Concat(c.attention2.output[l],c.context.output),w.m2Fusion,w.m2Residual,new[]{w.m2Deep1,w.m2Deep2,w.m2Deep3},w.m2Output,w.m2Bias,5,8f);for(int s=0;s<5;s++)c.actions[s,l]=c.heads[l].output[s];}return c;
+    }
+    private static void BackwardM2(M2Cache c,float[,] actionGradient,NativeBrainWeights w,Dictionary<string,float[]> g)
+    {
+        float[][] attentionGradient=Enumerable.Range(0,c.observation.limbCount).Select(_=>new float[Hidden]).ToArray();float[] contextGradient=new float[Hidden];
+        for(int l=0;l<c.observation.limbCount;l++){float[] og=new float[5];for(int s=0;s<5;s++)og[s]=actionGradient[s,l];float[] fg=BackwardHead(c.heads[l],og,w.m2Fusion,w.m2Residual,new[]{w.m2Deep1,w.m2Deep2,w.m2Deep3},w.m2Output,g["fusion"],g["residual"],new[]{g["deep1"],g["deep2"],g["deep3"]},g["output"],g["bias"]);Array.Copy(fg,attentionGradient[l],Hidden);for(int h=0;h<Hidden;h++)contextGradient[h]+=fg[Hidden+h];}
+        float[][] firstBlockGradient=BackwardAttention(c.attention2,attentionGradient,w.m2AttentionQuery2,w.m2AttentionKey2,w.m2AttentionValue2,g["attentionQuery2"],g["attentionKey2"],g["attentionValue2"]);float[][] tg=BackwardAttention(c.attention,firstBlockGradient,w.m2AttentionQuery,w.m2AttentionKey,w.m2AttentionValue,g["attentionQuery"],g["attentionKey"],g["attentionValue"]);for(int l=0;l<c.observation.limbCount;l++)BackwardJoint(c.limbs[l],tg[l],w.m2Joint,w.m2Position,g["joint"],g["position"],g["bias"],Hidden);BackwardDense(c.context,contextGradient,w.m2Context,g["context"],g["bias"]);
+    }
+    private static M3Cache ForwardM3(NativeObservation o,float[,] actions,NativeBrainWeights w)
+    {
+        var c=new M3Cache{observation=o,actions=actions,context=ForwardDense(o.torsoWithoutGoal,w.m3Context,w.m3Bias,0,M3ContextSize,Hidden,true),limbs=new JointCache[o.limbCount]};float[][] tokens=new float[o.limbCount][];
+        for(int l=0;l<o.limbCount;l++){float[] input=new float[9];Array.Copy(o.jointFeatures,l*4,input,0,4);for(int s=0;s<5;s++)input[4+s]=actions[s,l]/8f;c.limbs[l]=ForwardJoint(input,Slice(o.positionEncodings,l*2,2),w.m3Joint,w.m3Position,w.m3Bias,Hidden);tokens[l]=c.limbs[l].output;}
+        c.attention=ForwardAttention(tokens,w.m3AttentionQuery,w.m3AttentionKey,w.m3AttentionValue,M3AttentionHeads);c.attention2=ForwardAttention(c.attention.output,w.m3AttentionQuery2,w.m3AttentionKey2,w.m3AttentionValue2,M3AttentionHeads);c.head=ForwardHead(Concat(MeanTokens(c.attention2.output),c.context.output),w.m3Fusion,w.m3Residual,new[]{w.m3Deep1,w.m3Deep2,w.m3Deep3},w.m3Output,w.m3Bias,10,1f);c.prediction=c.head.output;return c;
+    }
+    private static float[,] BackwardM3(M3Cache c,float[] outputGradient,NativeBrainWeights w,Dictionary<string,float[]> supplied)
+    {
+        var g=supplied??Zero(w.M3Parameters());float[] fg=BackwardHead(c.head,outputGradient,w.m3Fusion,w.m3Residual,new[]{w.m3Deep1,w.m3Deep2,w.m3Deep3},w.m3Output,g["fusion"],g["residual"],new[]{g["deep1"],g["deep2"],g["deep3"]},g["output"],g["bias"]);float[][] ag=Enumerable.Range(0,c.observation.limbCount).Select(_=>new float[Hidden]).ToArray();for(int l=0;l<c.observation.limbCount;l++)for(int h=0;h<Hidden;h++)ag[l][h]=fg[h]/Mathf.Max(1,c.observation.limbCount);
+        float[][] firstBlockGradient=BackwardAttention(c.attention2,ag,w.m3AttentionQuery2,w.m3AttentionKey2,w.m3AttentionValue2,g["attentionQuery2"],g["attentionKey2"],g["attentionValue2"]);float[][] tg=BackwardAttention(c.attention,firstBlockGradient,w.m3AttentionQuery,w.m3AttentionKey,w.m3AttentionValue,g["attentionQuery"],g["attentionKey"],g["attentionValue"]);float[,] result=new float[5,MaxLimbs];for(int l=0;l<c.observation.limbCount;l++){float[] ig=BackwardJoint(c.limbs[l],tg[l],w.m3Joint,w.m3Position,g["joint"],g["position"],g["bias"],Hidden);for(int s=0;s<5;s++)result[s,l]=ig[4+s]/8f;}BackwardDense(c.context,Slice(fg,Hidden,Hidden),w.m3Context,g["context"],g["bias"]);return result;
     }
 
-    private NativePlanRollout RolloutPlan(Limb[] limbs, float[,] plan, bool torsoTouchingGround, float normalizedEnergy, bool predatorContact)
+    private static JointCache ForwardJoint(float[] input,float[] position,float[] iw,float[] pw,float[] bias,int offset){var c=new JointCache{input=input,position=position,output=new float[Hidden]};for(int h=0;h<Hidden;h++){float v=bias[offset+h];for(int i=0;i<input.Length;i++)v+=input[i]*iw[i*Hidden+h];for(int i=0;i<2;i++)v+=position[i]*pw[i*Hidden+h];c.output[h]=(float)Math.Tanh(v);}return c;}
+    private static float[] BackwardJoint(JointCache c,float[] og,float[] iw,float[] pw,float[] iwg,float[] pwg,float[] bg,int offset){float[] ig=new float[c.input.Length];for(int h=0;h<Hidden;h++){float g=og[h]*(1f-c.output[h]*c.output[h]);bg[offset+h]+=g;for(int i=0;i<c.input.Length;i++){iwg[i*Hidden+h]+=c.input[i]*g;ig[i]+=iw[i*Hidden+h]*g;}for(int i=0;i<2;i++)pwg[i*Hidden+h]+=c.position[i]*g;}return ig;}
+    private static AttentionCache ForwardAttention(float[][] input,float[] qw,float[] kw,float[] vw,int heads)
     {
-        int limbCount = Mathf.Min(limbs.Length, MaxLimbs);
-        float[][] encoded = new float[limbCount][]; float[] context = new float[Hidden];
-        for (int i = 0; i < limbCount; i++)
-        {
-            encoded[i] = Dense(Dense(Dense(Dense(BaseLimbFeatures(limbs[i]), Weights.m3Input, 13, Hidden, true), Weights.m3Middle, Hidden, Hidden, true), Weights.m3Deep, Hidden, Hidden, true), Weights.m3Extra, Hidden, Hidden, true);
-            for (int h = 0; h < Hidden; h++) context[h] += encoded[i][h];
-        }
-        if (limbCount > 0) for (int h = 0; h < Hidden; h++) context[h] /= limbCount;
-        float[] simulatedHistory = (float[])M3Hidden.Clone();
-        NativeSimulatedState state = new NativeSimulatedState { energy = normalizedEnergy, groundRisk = torsoTouchingGround ? 1f : 0f, predatorRisk = predatorContact ? 1f : 0f };
-        NativePlanStep[] steps = new NativePlanStep[PlanningHorizon];
-        for (int step = 0; step < PlanningHorizon; step++)
-        {
-            float[] history = RunGru(context, simulatedHistory, Weights.m3History);
-            NativeSimulatedState inputState = state;
-            float[] values = new float[M3OutputSize]; float[] combined = new float[Hidden];
-            for (int limb = 0; limb < limbCount; limb++)
-            {
-                float[] output = M3Output(encoded[limb], context, history, inputState, plan[step, limb]);
-                for (int outputIndex = 0; outputIndex < M3OutputSize; outputIndex++) values[outputIndex] += output[outputIndex];
-                for (int h = 0; h < Hidden; h++) combined[h] += (float)Math.Tanh(encoded[limb][h] + context[h] + history[h]);
-            }
-            if (limbCount > 0) for (int outputIndex = 0; outputIndex < M3OutputSize; outputIndex++) values[outputIndex] /= limbCount;
-            if (limbCount > 0) for (int h = 0; h < Hidden; h++) combined[h] /= limbCount;
-            state.position += new Vector2(values[0], values[1]);
-            state.energy = Mathf.Clamp01(state.energy + values[2]);
-            state.groundRisk = values[3]; state.predatorRisk = values[4];
-            float meanAction = 0f;
-            for (int limb = 0; limb < limbCount; limb++) meanAction += plan[step, limb];
-            if (limbCount > 0) meanAction /= limbCount;
-            steps[step] = new NativePlanStep { position = state.position, energyDelta = values[2], groundRisk = values[3], predatorRisk = values[4], prediction = new NativePredictedTransition { combined = combined, state = inputState.ToArray(), action = meanAction / MaximumActionDegrees, predictionX = values[0], predictionY = values[1], predictionEnergy = values[2], predictionGround = values[3], predictionPredator = values[4] } };
-        }
-        return new NativePlanRollout(steps);
+        int n=input.Length;var c=new AttentionCache{input=input,q=new float[n][],k=new float[n][],v=new float[n][],output=new float[n][],probability=new float[heads,n,n],heads=heads};for(int i=0;i<n;i++){c.q[i]=Linear(input[i],qw);c.k[i]=Linear(input[i],kw);c.v[i]=Linear(input[i],vw);c.output[i]=new float[Hidden];}
+        for(int head=0;head<heads;head++){int start=AttentionHeadStart(head,heads),headWidth=AttentionHeadWidth(head,heads);float scale=1f/Mathf.Sqrt(headWidth);for(int i=0;i<n;i++){float max=float.NegativeInfinity,sum=0f;float[] scores=new float[n];for(int j=0;j<n;j++){float dot=0f;for(int h=0;h<headWidth;h++)dot+=c.q[i][start+h]*c.k[j][start+h];scores[j]=dot*scale;max=Mathf.Max(max,scores[j]);}for(int j=0;j<n;j++){c.probability[head,i,j]=Mathf.Exp(Mathf.Clamp(scores[j]-max,-20f,20f));sum+=c.probability[head,i,j];}for(int j=0;j<n;j++)c.probability[head,i,j]/=Mathf.Max(1e-8f,sum);for(int h=0;h<headWidth;h++){int index=start+h;float value=input[i][index];for(int j=0;j<n;j++)value+=c.probability[head,i,j]*c.v[j][index];c.output[i][index]=(float)Math.Tanh(value);}}}return c;
     }
-
-    private float[] M3Output(float[] encoded, float[] context, float[] history, NativeSimulatedState state, float action)
+    private static float[][] BackwardAttention(AttentionCache c,float[][] og,float[] qw,float[] kw,float[] vw,float[] qwg,float[] kwg,float[] vwg)
     {
-        float[] values = new float[M3OutputSize]; float[] stateValues = state.ToArray();
-        for (int output = 0; output < M3OutputSize; output++)
-        {
-            float value = action / MaximumActionDegrees * Weights.m3Action[output];
-            for (int h = 0; h < Hidden; h++) value += (float)Math.Tanh(encoded[h] + context[h] + history[h]) * Weights.m3Output[h * M3OutputSize + output];
-            for (int s = 0; s < SimulatedStateSize; s++) value += stateValues[s] * Weights.m3State[s * M3OutputSize + output];
-            values[output] = output == 3 || output == 4 ? Sigmoid(value) : (float)Math.Tanh(value);
-        }
-        return values;
+        int n=c.input.Length;float[][] ig=Enumerable.Range(0,n).Select(_=>new float[Hidden]).ToArray(),qg=Enumerable.Range(0,n).Select(_=>new float[Hidden]).ToArray(),kg=Enumerable.Range(0,n).Select(_=>new float[Hidden]).ToArray(),vg=Enumerable.Range(0,n).Select(_=>new float[Hidden]).ToArray();float[,,] pg=new float[c.heads,n,n];
+        for(int head=0;head<c.heads;head++){int start=AttentionHeadStart(head,c.heads),headWidth=AttentionHeadWidth(head,c.heads);for(int i=0;i<n;i++)for(int h=0;h<headWidth;h++){int index=start+h;float gradient=og[i][index]*(1f-c.output[i][index]*c.output[i][index]);ig[i][index]+=gradient;for(int j=0;j<n;j++){pg[head,i,j]+=gradient*c.v[j][index];vg[j][index]+=gradient*c.probability[head,i,j];}}}
+        for(int head=0;head<c.heads;head++){int start=AttentionHeadStart(head,c.heads),headWidth=AttentionHeadWidth(head,c.heads);float scale=1f/Mathf.Sqrt(headWidth);for(int i=0;i<n;i++){float mean=0f;for(int j=0;j<n;j++)mean+=pg[head,i,j]*c.probability[head,i,j];for(int j=0;j<n;j++){float scoreGradient=c.probability[head,i,j]*(pg[head,i,j]-mean)*scale;for(int h=0;h<headWidth;h++){int index=start+h;qg[i][index]+=scoreGradient*c.k[j][index];kg[j][index]+=scoreGradient*c.q[i][index];}}}}
+        for(int i=0;i<n;i++){BackwardLinear(c.input[i],qg[i],qw,qwg,ig[i]);BackwardLinear(c.input[i],kg[i],kw,kwg,ig[i]);BackwardLinear(c.input[i],vg[i],vw,vwg,ig[i]);}return ig;
     }
-
-    private void RefinePlan(float[,] plan, float[][] encoded, NativePlanRollout rollout)
-    {
-        int limbCount = encoded.Length;
-        for (int step = 0; step < PlanningHorizon; step++)
-        {
-            NativePlanStep consequence = rollout.steps[step];
-            for (int limb = 0; limb < limbCount; limb++)
-            {
-                float[] features = { consequence.position.x - CurrentGoal.x, consequence.position.y - CurrentGoal.y, consequence.energyDelta, consequence.groundRisk, consequence.predatorRisk, plan[step, limb] / MaximumActionDegrees };
-                float correction = 0f;
-                for (int h = 0; h < Hidden; h++) correction += encoded[limb][h] * Weights.m2Refine[h * PlanningHorizon + step];
-                for (int f = 0; f < ConsequenceSize; f++) correction += features[f] * Weights.m2Refine[(Hidden + f) * PlanningHorizon + step];
-                plan[step, limb] = BoundedAction(Mathf.Atan(plan[step, limb] / MaximumActionDegrees) + (float)Math.Tanh(correction) * .35f);
-            }
-        }
-    }
-
-    private float PlannerLoss(NativePlanRollout rollout, int arrivalStep)
-    {
-        int q = Mathf.Clamp(arrivalStep, 1, PlanningHorizon) - 1; float loss = 0f;
-        for (int step = 0; step < PlanningHorizon; step++)
-        {
-            NativePlanStep consequence = rollout.steps[step];
-            float distance = (consequence.position - CurrentGoal).sqrMagnitude / GoalNormalizationSquared;
-            if (q == PlanningHorizon - 1) loss += LatePlanWeights()[step] * distance;
-            else if (step == q) loss += distance;
-            else if (step < q) { float weight = (step + 1f) * (step + 1f) / Mathf.Max(1f, q * q); loss += .05f * weight * distance; }
-            else loss += .25f * distance;
-            loss += 10f * consequence.predatorRisk + 2f * consequence.groundRisk + .1f * Mathf.Max(0f, -consequence.energyDelta);
-        }
-        return loss;
-    }
-
-    public static float[] LatePlanWeights()
-    {
-        float[] weights = new float[PlanningHorizon]; float total = 0f;
-        for (int step = 0; step < PlanningHorizon; step++) { weights[step] = (step + 1) * (step + 1); total += weights[step]; }
-        for (int step = 0; step < PlanningHorizon; step++) weights[step] /= total;
-        return weights;
-    }
-
-    // Truncated reverse accumulation carries each later horizon error back to
-    // earlier planned actions.  It remains entirely inside the learned M3
-    // rollout, so no Unity physics call or persistent recurrent state is used
-    // during imagination.
-    private void ApplyPlannerGradient(float[,] plan, float[][] encoded, NativePlanRollout rollout, int arrivalStep)
-    {
-        if (encoded.Length == 0) return;
-        if (Weights.m2Moment == null || Weights.m2Moment.Length != Hidden * PlanningHorizon) Weights.m2Moment = new float[Hidden * PlanningHorizon];
-        float[] horizonGradient = new float[PlanningHorizon];
-        float carriedGradient = 0f;
-        int deadline = Mathf.Clamp(arrivalStep, 1, PlanningHorizon) - 1;
-        float[] lateWeights = LatePlanWeights();
-        for (int step = PlanningHorizon - 1; step >= 0; step--)
-        {
-            NativePlanStep consequence = rollout.steps[step];
-            float goalGradient = 2f * (consequence.position.x - CurrentGoal.x + consequence.position.y - CurrentGoal.y) / GoalNormalizationSquared;
-            float safetyGradient = 10f * consequence.predatorRisk + 2f * consequence.groundRisk + .1f * Mathf.Max(0f, -consequence.energyDelta);
-            float supervision = deadline == PlanningHorizon - 1 ? lateWeights[step] : (step == deadline ? 1f : step < deadline ? .05f : .25f);
-            carriedGradient = Mathf.Clamp(carriedGradient + supervision * goalGradient + safetyGradient, -32f, 32f);
-            horizonGradient[step] = carriedGradient * .01f;
-        }
-        for (int step = 0; step < PlanningHorizon; step++)
-        {
-            NativePlanStep consequence = rollout.steps[step];
-            float gradient = horizonGradient[step];
-            for (int limb = 0; limb < encoded.Length; limb++)
-                for (int h = 0; h < Hidden; h++)
-                {
-                    int index = h * PlanningHorizon + step;
-                    Weights.m2Moment[index] = Mathf.Clamp(.9f * Weights.m2Moment[index] + gradient * encoded[limb][h], -64f, 64f);
-                    Weights.m2Output[index] = Mathf.Clamp(Weights.m2Output[index] - .0005f * Weights.m2Moment[index], -4f, 4f);
-                    Weights.m2Refine[index] = Mathf.Clamp(Weights.m2Refine[index] - .00025f * gradient * encoded[limb][h], -4f, 4f);
-                }
-            float[] refineFeatures = { consequence.position.x - CurrentGoal.x, consequence.position.y - CurrentGoal.y, consequence.energyDelta, consequence.groundRisk, consequence.predatorRisk, plan[step, 0] / MaximumActionDegrees };
-            for (int feature = 0; feature < ConsequenceSize; feature++)
-            {
-                int index = (Hidden + feature) * PlanningHorizon + step;
-                Weights.m2Refine[index] = Mathf.Clamp(Weights.m2Refine[index] - .0005f * gradient * refineFeatures[feature], -4f, 4f);
-            }
-        }
-    }
-
-    public bool TrainDynamics(NativeTransitionTarget actual, float learningRate = .0005f)
-    {
-        if (pendingTransition == null || !Weights.IsFinite()) return false;
-        dynamicsReplay.Add(new NativeDynamicsReplaySample { combined = pendingTransition.combined, state = pendingTransition.state, action = pendingTransition.action, predictionX = pendingTransition.predictionX, predictionY = pendingTransition.predictionY, predictionEnergy = pendingTransition.predictionEnergy, predictionGround = pendingTransition.predictionGround, predictionPredator = pendingTransition.predictionPredator, measuredX = actual.displacement.x, measuredY = actual.displacement.y, measuredEnergy = actual.energyDelta, measuredGround = actual.torsoGrounded ? 1f : 0f, measuredPredator = actual.predatorContact ? 1f : 0f });
-        if (dynamicsReplay.Count > 256) dynamicsReplay.RemoveAt(0);
-        if (Weights.m3Moment == null || Weights.m3Moment.Length != Hidden * M3OutputSize) Weights.m3Moment = new float[Hidden * M3OutputSize];
-        int count = Mathf.Min(8, dynamicsReplay.Count); float loss = 0f;
-        for (int batch = 0; batch < count; batch++)
-        {
-            NativeDynamicsReplaySample sample = dynamicsReplay[exploration.Next(dynamicsReplay.Count)];
-            float[] predicted = { sample.predictionX, sample.predictionY, sample.predictionEnergy, sample.predictionGround, sample.predictionPredator };
-            float[] measured = { sample.measuredX, sample.measuredY, sample.measuredEnergy, sample.measuredGround, sample.measuredPredator };
-            for (int output = 0; output < M3OutputSize; output++)
-            {
-                float error = predicted[output] - measured[output]; loss += error * error;
-                float gradient = Mathf.Clamp(2f * error / count, -16f, 16f);
-                for (int h = 0; h < Hidden; h++)
-                {
-                    int index = h * M3OutputSize + output;
-                    Weights.m3Moment[index] = Mathf.Clamp(.9f * Weights.m3Moment[index] + gradient * sample.combined[h], -64f, 64f);
-                    Weights.m3Output[index] = Mathf.Clamp(Weights.m3Output[index] - learningRate * Weights.m3Moment[index], -4f, 4f);
-                }
-                for (int s = 0; s < SimulatedStateSize; s++)
-                {
-                    int index = s * M3OutputSize + output;
-                    Weights.m3State[index] = Mathf.Clamp(Weights.m3State[index] - learningRate * gradient * sample.state[s], -4f, 4f);
-                }
-                Weights.m3Action[output] = Mathf.Clamp(Weights.m3Action[output] - learningRate * gradient * sample.action, -4f, 4f);
-            }
-        }
-        LastM3Loss = loss / (count * M3OutputSize); pendingTransition = null; return true;
-    }
-
-    public void CopyM3From(NativeBrainWeights source)
-    {
-        Weights.CopyM3From(source);
-    }
-    public void RepairFrom(NativeBrainWeights source)
-    {
-        Weights.CopyFrom(source); Array.Clear(M1Hidden, 0, M1Hidden.Length); Array.Clear(M2Hidden, 0, M2Hidden.Length); Array.Clear(M3Hidden, 0, M3Hidden.Length); pendingTransition = null;
-    }
-
-    private float[] RunM1(float[] input)
-    {
-        float[] gates = Dense(input, Weights.m1Input, 28, Hidden * 3, false);
-        for (int h = 0; h < Hidden; h++)
-        {
-            float z = Sigmoid(gates[h]); float r = Sigmoid(gates[Hidden + h]); float n = (float)Math.Tanh(gates[Hidden * 2 + h] + r * M1Hidden[h]);
-            M1Hidden[h] = (1f - z) * n + z * M1Hidden[h];
-        }
-        return Dense(M1Hidden, Weights.m1Output, Hidden, 2, true);
-    }
-
-    public static float[] PeriodicPhase(int controlStep)
-    {
-        float[] phase = new float[M2PhasePeriods.Length * 2];
-        for (int i = 0; i < M2PhasePeriods.Length; i++) { float angle = 2f * Mathf.PI * controlStep / M2PhasePeriods[i]; phase[i * 2] = Mathf.Sin(angle); phase[i * 2 + 1] = Mathf.Cos(angle); }
-        return phase;
-    }
-
-    private static float[] BaseLimbFeatures(Limb limb)
-    {
-        Dictionary<string, float> input = limb.GetLocalInputs();
-        return new[] { input["joint_angle"] / 180f, input["angular_velocity"] / 720f, input["touch_self"], input["touch_other_creature"], input["touch_environment"], limb.ExecutedIntervalDelta / MaximumActionDegrees, limb.dimensions.x / 3f, limb.dimensions.y / 1.2f, limb.maxMotorTorque / 200f, limb.depth / 4f, limb.MinAngle / 180f, limb.MaxAngle / 180f, limb.AtJointLimit ? 1f : 0f };
-    }
-
-    private static float[] M2LimbFeatures(Limb limb, Vector2 goal, int controlStep)
-    {
-        float[] baseFeatures = BaseLimbFeatures(limb); float[] phase = PeriodicPhase(controlStep); float[] result = new float[M2InputSize];
-        Array.Copy(baseFeatures, result, baseFeatures.Length); Array.Copy(phase, 0, result, baseFeatures.Length, phase.Length); return result;
-    }
-
-    private static float[] Dense(float[] input, float[] weights, int inputSize, int outputSize, bool tanh)
-    {
-        float[] output = new float[outputSize]; for (int o = 0; o < outputSize; o++) { float value = 0f; for (int i = 0; i < inputSize && i < input.Length; i++) value += input[i] * weights[i * outputSize + o]; output[o] = tanh ? (float)Math.Tanh(value) : value; } return output;
-    }
-    private static float[] RunGru(float[] input, float[] state, float[] weights)
-    {
-        float[] next = new float[Hidden];
-        for (int h = 0; h < Hidden; h++)
-        {
-            float z = 0f, r = 0f, n = 0f;
-            for (int i = 0; i < Hidden; i++) { z += input[i] * weights[i * Hidden + h]; r += input[i] * weights[Hidden * Hidden + i * Hidden + h]; n += input[i] * weights[Hidden * Hidden * 2 + i * Hidden + h]; }
-            z = Sigmoid(z); r = Sigmoid(r); next[h] = (1f - z) * (float)Math.Tanh(n + r * state[h]) + z * state[h];
-        }
-        Array.Copy(next, state, Hidden); return next;
-    }
-    private static float Sigmoid(float value) => 1f / (1f + Mathf.Exp(-Mathf.Clamp(value, -20f, 20f)));
-    private static float BoundedAction(float raw)
-    {
-        float normalized = Mathf.Abs((float)Math.Tanh(raw));
-        float magnitude = Mathf.Lerp(MinimumActionDegrees, MaximumActionDegrees, normalized);
-        return raw < 0f ? -magnitude : magnitude;
-    }
-    public NativeCreatureSave Capture() => new NativeCreatureSave { weights = Weights, hidden = M1Hidden, m2Hidden = M2Hidden, m3Hidden = M3Hidden, lossSum = M2LossSum, lossSamples = M2LossSamples, goalX = CurrentGoal.x, goalY = CurrentGoal.y, goalTicksRemaining = GoalTicksRemaining, partialPlan = (float[])partialPlan.Clone(), partialPlanLimbCount = partialPlanLimbCount, history = frameHistory.Select(frame => new NativeHistoryFrame { values = (float[])frame.Clone() }).ToList(), historyCount = historyCount, dynamicsReplay = dynamicsReplay };
-    public void Restore(NativeCreatureSave save) { if (save == null) return; Array.Copy(save.hidden ?? new float[Hidden], M1Hidden, Mathf.Min(Hidden, save.hidden?.Length ?? 0)); Array.Copy(save.m2Hidden ?? new float[Hidden], M2Hidden, Mathf.Min(Hidden, save.m2Hidden?.Length ?? 0)); Array.Copy(save.m3Hidden ?? new float[Hidden], M3Hidden, Mathf.Min(Hidden, save.m3Hidden?.Length ?? 0)); if (save.history != null) for (int i = 0; i < Mathf.Min(frameHistory.Length, save.history.Count); i++) Array.Copy(save.history[i].values ?? Array.Empty<float>(), frameHistory[i], Mathf.Min(frameHistory[i].Length, save.history[i].values?.Length ?? 0)); dynamicsReplay.Clear(); if (save.dynamicsReplay != null) dynamicsReplay.AddRange(save.dynamicsReplay.Take(256)); Array.Copy(save.partialPlan ?? Array.Empty<float>(), partialPlan, Mathf.Min(partialPlan.Length, save.partialPlan?.Length ?? 0)); partialPlanLimbCount = Mathf.Clamp(save.partialPlanLimbCount, 0, MaxLimbs); M2LossSum = save.lossSum; M2LossSamples = save.lossSamples; CurrentGoal = new Vector2(save.goalX, save.goalY); GoalTicksRemaining = Mathf.Clamp(save.goalTicksRemaining, 0, GoalWindowTicks); historyCount = save.historyCount; pendingTransition = null; }
+    private static HeadCache ForwardHead(float[] input,float[] fw,float[] rw,float[][] deep,float[] ow,float[] bias,int outputCount,float scale){var c=new HeadCache{fusion=ForwardDense(input,fw,bias,Hidden*2,Hidden*2,Hidden,true),outputScale=scale};c.residual=ForwardDense(c.fusion.output,rw,bias,Hidden*3,Hidden,Hidden,true);c.merged=new float[Hidden];for(int h=0;h<Hidden;h++)c.merged[h]=(float)Math.Tanh(c.fusion.output[h]+c.residual.output[h]);c.deepLayers=new DenseCache[deep.Length];float[] current=c.merged;for(int i=0;i<deep.Length;i++){c.deepLayers[i]=ForwardDense(current,deep[i],bias,Hidden*(4+i),Hidden,Hidden,true);current=c.deepLayers[i].output;}c.outputLayer=ForwardDense(current,ow,bias,Hidden*(4+deep.Length),Hidden,outputCount,false);c.output=new float[outputCount];for(int i=0;i<outputCount;i++)c.output[i]=(float)Math.Tanh(c.outputLayer.pre[i])*scale;return c;}
+    private static float[] BackwardHead(HeadCache c,float[] og,float[] fw,float[] rw,float[][] deep,float[] ow,float[] fwg,float[] rwg,float[][] deepg,float[] owg,float[] bg){float[] pg=new float[og.Length];for(int i=0;i<og.Length;i++){float t=c.output[i]/c.outputScale;pg[i]=og[i]*c.outputScale*(1f-t*t);}float[] mg=BackwardDense(c.outputLayer,pg,ow,owg,bg);for(int i=c.deepLayers.Length-1;i>=0;i--)mg=BackwardDense(c.deepLayers[i],mg,deep[i],deepg[i],bg);float[] fg=new float[Hidden],rg=new float[Hidden];for(int h=0;h<Hidden;h++){float gradient=mg[h]*(1f-c.merged[h]*c.merged[h]);fg[h]=gradient;rg[h]=gradient;}float[] extra=BackwardDense(c.residual,rg,rw,rwg,bg);for(int h=0;h<Hidden;h++)fg[h]+=extra[h];return BackwardDense(c.fusion,fg,fw,fwg,bg);}
+    private static DenseCache ForwardDense(float[] input,float[] weights,float[] bias,int offset,int inputCount,int outputCount,bool activate){var c=new DenseCache{input=input,pre=new float[outputCount],output=new float[outputCount],biasOffset=offset,activate=activate};for(int o=0;o<outputCount;o++){float v=bias[offset+o];for(int i=0;i<inputCount;i++)v+=input[i]*weights[i*outputCount+o];c.pre[o]=v;c.output[o]=activate?(float)Math.Tanh(v):v;}return c;}
+    private static float[] BackwardDense(DenseCache c,float[] og,float[] weights,float[] wg,float[] bg){int outputs=og.Length;float[] ig=new float[c.input.Length];for(int o=0;o<outputs;o++){float g=og[o]*(c.activate?1f-c.output[o]*c.output[o]:1f);bg[c.biasOffset+o]+=g;for(int i=0;i<c.input.Length;i++){wg[i*outputs+o]+=c.input[i]*g;ig[i]+=weights[i*outputs+o]*g;}}return ig;}
+    private static Dictionary<string,float[]> Zero(IEnumerable<KeyValuePair<string,float[]>> parameters){var g=new Dictionary<string,float[]>();foreach(var p in parameters)g[p.Key]=new float[p.Value.Length];return g;}
+    private static void ApplyAdam(IEnumerable<KeyValuePair<string,float[]>> parameters,Dictionary<string,float[]> gradients,NativeOptimizerState optimizer,float learningRate){float norm2=gradients.Values.Sum(a=>a.Sum(v=>v*v)),clip=1f/Mathf.Max(1f,Mathf.Sqrt(norm2));optimizer.step++;foreach(var p in parameters){var slot=optimizer.Get(p.Key,p.Value.Length);float[] g=gradients[p.Key];for(int i=0;i<p.Value.Length;i++){float v=g[i]*clip;slot.first[i]=.9f*slot.first[i]+.1f*v;slot.second[i]=.999f*slot.second[i]+.001f*v*v;float mh=slot.first[i]/(1f-Mathf.Pow(.9f,optimizer.step)),vh=slot.second[i]/(1f-Mathf.Pow(.999f,optimizer.step));p.Value[i]-=learningRate*mh/(Mathf.Sqrt(vh)+1e-8f);}}}
+    private static float[] Linear(float[] input,float[] weights){float[] o=new float[Hidden];for(int i=0;i<Hidden;i++)for(int h=0;h<Hidden;h++)o[h]+=input[i]*weights[i*Hidden+h];return o;}
+    private static int AttentionHeadStart(int head,int heads)=>head*Hidden/heads;
+    private static int AttentionHeadWidth(int head,int heads)=>(head+1)*Hidden/heads-AttentionHeadStart(head,heads);
+    private static void BackwardLinear(float[] input,float[] og,float[] weights,float[] wg,float[] ig){for(int i=0;i<Hidden;i++)for(int h=0;h<Hidden;h++){wg[i*Hidden+h]+=input[i]*og[h];ig[i]+=weights[i*Hidden+h]*og[h];}}
+    private static float Dot(float[] a,float[] b){float v=0f;for(int i=0;i<a.Length;i++)v+=a[i]*b[i];return v;}
+    private static float[] Slice(float[] a,int start,int count){float[] r=new float[count];Array.Copy(a,start,r,0,count);return r;}
+    private static float[] Concat(float[] a,float[] b){float[] r=new float[a.Length+b.Length];Array.Copy(a,r,a.Length);Array.Copy(b,0,r,a.Length,b.Length);return r;}
+    private static float[] MeanTokens(float[][] tokens){float[] r=new float[Hidden];if(tokens.Length==0)return r;foreach(float[] t in tokens)for(int h=0;h<Hidden;h++)r[h]+=t[h]/tokens.Length;return r;}
 }
 
-public sealed class NativeActionPlan
+[Serializable] public sealed class NativeOptimizerSlot{public string name;public float[] first,second;}
+[Serializable] public sealed class NativeDeterministicRng{public ulong State;public NativeDeterministicRng(ulong seed){State=seed==0?1UL:seed;}public float NextFloat(){State^=State<<13;State^=State>>7;State^=State<<17;return (State&0xFFFFFF)/(float)0x1000000;}}
+[Serializable] public sealed class NativeOptimizerState{public int step;public List<NativeOptimizerSlot> slots=new List<NativeOptimizerSlot>();public NativeOptimizerSlot Get(string name,int length){var s=slots.FirstOrDefault(v=>v.name==name);if(s==null){s=new NativeOptimizerSlot{name=name};slots.Add(s);}if(s.first==null||s.first.Length!=length)s.first=new float[length];if(s.second==null||s.second.Length!=length)s.second=new float[length];return s;}}
+[Serializable] public sealed class NativeObservation
 {
-    public readonly float[,] actions;
-    public readonly int limbCount;
-    public readonly Vector2 goal;
-    public readonly int arrivalStep;
-    public NativeActionPlan(float[,] actions, int limbCount, Vector2 goal, int arrivalStep) { this.actions = actions; this.limbCount = limbCount; this.goal = goal; this.arrivalStep = arrivalStep; }
-    public float[] FirstAction()
-    {
-        float[] result = new float[NativeCreatureModel.MaxLimbs];
-        for (int i = 0; i < result.Length; i++) result[i] = actions[0, i];
-        return result;
-    }
+    public float[] torsoWithGoal,torsoWithoutGoal,jointFeatures,positionEncodings;
+    public int limbCount,tick;
+    public float goalX,goalY,worldGoalX,worldGoalY,startWorldX,startWorldY,startWorldRotationDegrees;
+    [JsonIgnore] public Vector2 goal{get=>new Vector2(goalX,goalY);set{goalX=value.x;goalY=value.y;}}
+    [JsonIgnore] public Vector2 worldGoal{get=>new Vector2(worldGoalX,worldGoalY);set{worldGoalX=value.x;worldGoalY=value.y;}}
+    [JsonIgnore] public Vector2 startWorldPosition{get=>new Vector2(startWorldX,startWorldY);set{startWorldX=value.x;startWorldY=value.y;}}
 }
-
-public struct NativeTransitionTarget
-{
-    public Vector2 displacement;
-    public float energyDelta;
-    public bool torsoGrounded;
-    public bool predatorContact;
-}
-
-public sealed class NativePredictedTransition
-{
-    public float[] combined;
-    public float[] state;
-    public float action;
-    public float predictionX, predictionY, predictionEnergy, predictionGround, predictionPredator;
-}
-
-public struct NativeSimulatedState
-{
-    public Vector2 position;
-    public float energy, groundRisk, predatorRisk;
-    public float[] ToArray() => new[] { position.x, position.y, energy, groundRisk, predatorRisk };
-}
-
-public struct NativePlanStep
-{
-    public Vector2 position;
-    public float energyDelta, groundRisk, predatorRisk;
-    public NativePredictedTransition prediction;
-}
-
-public sealed class NativePlanRollout
-{
-    public readonly NativePlanStep[] steps;
-    public NativePlanRollout(NativePlanStep[] steps) { this.steps = steps; }
-}
-
-[Serializable]
-public sealed class NativeCreatureSave
-{
-    public NativeBrainWeights weights;
-    public float[] hidden;
-    public float[] m2Hidden;
-    public float[] m3Hidden;
-    public float lossSum;
-    public int lossSamples;
-    public float goalX;
-    public float goalY;
-    public int goalTicksRemaining;
-    public float[] partialPlan;
-    public int partialPlanLimbCount;
-    public List<NativeHistoryFrame> history;
-    public int historyCount;
-    public List<NativeDynamicsReplaySample> dynamicsReplay;
-}
-
-[Serializable]
-public sealed class NativeHistoryFrame { public float[] values; }
-
-[Serializable]
-public sealed class NativeDynamicsReplaySample { public float[] combined; public float[] state; public float action; public float predictionX; public float predictionY; public float predictionEnergy; public float predictionGround; public float predictionPredator; public float measuredX; public float measuredY; public float measuredEnergy; public float measuredGround; public float measuredPredator; }
-
-[Serializable]
-public sealed class NativeEcosystemCheckpoint
-{
-    public int schema = 1;
-    public const string ConfigurationFingerprint = "m1goal20-m2h5-k3-m2refine-m3action-motion-safety-transition4-m2d6-m3d4-phase4-8-16-32-replayv2-h4-l8-p4-a8";
-    public string configuration = ConfigurationFingerprint;
-    public int tick;
-    public int generation;
-    public int controlStep;
-    public long randomState;
-    public long nextEvolutionTicks;
-    public NativeBrainWeights sharedWeights;
-    public List<NativeCreatureCheckpoint> creatures = new List<NativeCreatureCheckpoint>();
-}
-
-[Serializable]
-public sealed class NativeCreatureCheckpoint
-{
-    public string creatureId;
-    public string speciesId;
-    public string m1SpeciesId;
-    public string bodyGenomeJson;
-    public NativeCreatureSave brain;
-    public float bodyFitness;
-    public float deathPenalty;
-    public float m1EnergyFitness;
-    public float previousEnergy;
-    public bool deathRecorded;
-}
+public sealed class NativePositionPrediction{public readonly float[] positions;public NativePositionPrediction(float[] values){positions=values??new float[10];}public Vector2 At(int step)=>new Vector2(positions[step*2],positions[step*2+1]);}
+public sealed class NativeActionSequence{public readonly float[,] actions;public readonly int limbCount;public readonly Vector2 goal,worldGoal;public readonly NativePositionPrediction prediction;public readonly float biasStrength,explorationSigma;public NativeActionSequence(float[,] a,int count,Vector2 g,Vector2 wg,NativePositionPrediction p,float b,float s){actions=a;limbCount=count;goal=g;worldGoal=wg;prediction=p;biasStrength=b;explorationSigma=s;}public float[] ActionAt(int step){float[] r=new float[NativeCreatureModel.MaxLimbs];for(int i=0;i<limbCount;i++)r[i]=actions[step,i];return r;}}
+[Serializable] public sealed class NativeCompletedSequence{public NativeObservation observation;public float[] actions,actualPositions;public float[,] ActionMatrix(){var result=new float[NativeCreatureModel.PlanningHorizon,NativeCreatureModel.MaxLimbs];if(actions==null)return result;for(int s=0;s<NativeCreatureModel.PlanningHorizon;s++)for(int l=0;l<NativeCreatureModel.MaxLimbs;l++){int i=s*NativeCreatureModel.MaxLimbs+l;if(i<actions.Length)result[s,l]=actions[i];}return result;}}
+public struct NativeLocalProprioception{public Vector2 worldPosition,localLinearVelocity;public float worldRotationDegrees;public Vector2 WorldToTorsoVector(Vector2 worldVector)=>Quaternion.Euler(0f,0f,-worldRotationDegrees)*worldVector;}
+[Serializable] public sealed class NativeCreatureSave{public NativeBrainWeights weights;public NativeOptimizerState m2Optimizer;public float goalX,goalY,worldGoalX,worldGoalY,m1AnchorX,m1AnchorY;public int goalTicksRemaining,fixedGoalBlock;public bool m1AnchorInitialized;public ulong explorationState;public List<float> leftLosses,rightLosses;public float leftBestProgress,rightBestProgress;}
+[Serializable] public sealed class NativeCreatureCheckpoint{public string creatureId,speciesId,m1SpeciesId,bodyGenomeJson;public NativeCreatureSave brain;public float bodyFitness,deathPenalty,m1EnergyFitness,previousEnergy;public bool deathRecorded,protectedOffspring;public int bodyAgeGenerations,temporaryGoalRewardBlock;}
+[Serializable] public sealed class NativeEcosystemCheckpoint{public int schema=13;public const string ConfigurationFingerprint="native-v13-openloop-h5-a4-ff32-m2h4-t2-mlp5-m3h8-t2-mlp5-m1worldanchor-localpos-m2goal-m3direct10-antizero4-bias075t13333-temporarygoalreward";public string configuration=ConfigurationFingerprint;public int tick,generation,controlStep,specialistSelectionCursor,sharedM3Updates;public string experimentId;public long randomState,nextEvolutionTicks;public NativeBrainWeights sharedWeights;public NativeOptimizerState m3Optimizer;public List<NativeCompletedSequence> validation=new List<NativeCompletedSequence>();public List<NativeCreatureCheckpoint> creatures=new List<NativeCreatureCheckpoint>();public static bool IsCompatibleConfiguration(string value)=>value==ConfigurationFingerprint;}
+internal sealed class DenseCache{public float[] input,pre,output;public int biasOffset;public bool activate;}
+internal sealed class JointCache{public float[] input,position,output;}
+internal sealed class AttentionCache{public float[][] input,q,k,v,output;public float[,,] probability;public int heads;}
+internal sealed class HeadCache{public DenseCache fusion,residual,outputLayer;public DenseCache[] deepLayers;public float[] merged,output;public float outputScale;}
+internal sealed class M2Cache{public NativeObservation observation;public DenseCache context;public JointCache[] limbs;public AttentionCache attention,attention2;public HeadCache[] heads;public float[,] actions;}
+internal sealed class M3Cache{public NativeObservation observation;public float[,] actions;public DenseCache context;public JointCache[] limbs;public AttentionCache attention,attention2;public HeadCache head;public float[] prediction;}

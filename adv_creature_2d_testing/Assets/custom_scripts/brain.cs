@@ -16,14 +16,17 @@ public class CreatureBrain : MonoBehaviour
     public float LastActionMagnitude { get; private set; }
     public string ControlMode => LatestTelemetry == null ? "waiting" : LatestTelemetry.Value<string>("control_mode") ?? "waiting";
     public Vector2 CurrentGoal { get; private set; }
+    public Vector2 CurrentWorldGoal { get; private set; }
+    public bool HasWorldGoal { get; private set; }
     public string M1SpeciesId { get; private set; } = "m1_unknown";
     public float BodyFitness { get; private set; } = float.PositiveInfinity;
 
     public void Init(Torso torsoRef, List<Limb> limbs) { torso = torsoRef; allLimbs = limbs; BornTime = Time.time; }
     public void SetNativeMetadata(string species, string m1Species) { M1SpeciesId = string.IsNullOrEmpty(m1Species) ? "m1_unknown" : m1Species; }
     public void ApplyNativeActions(float[] deltas, Vector2 goal, int controlTicks, int appliedTick) {
-        if (IsDead) return; float largest = 0f; for (int i = 0; i < allLimbs.Count; i++) { float delta = deltas != null && i < deltas.Length ? deltas[i] : 0f; largest = Mathf.Max(largest, Mathf.Abs(delta)); allLimbs[i].ApplyIntervalDelta(delta, controlTicks, Time.fixedDeltaTime); } CurrentGoal = Vector2.ClampMagnitude(goal, .25f); LastActionMagnitude = largest; LastAppliedTick = appliedTick; LastActionSourceTick = appliedTick;
+        if (IsDead) return; float largest = 0f; for (int i = 0; i < allLimbs.Count; i++) { float delta = deltas != null && i < deltas.Length ? deltas[i] : 0f; largest = Mathf.Max(largest, Mathf.Abs(delta)); allLimbs[i].ApplyIntervalDelta(delta, controlTicks, Time.fixedDeltaTime); } CurrentGoal = Vector2.ClampMagnitude(goal, NativeCreatureModel.GoalMagnitude); LastActionMagnitude = largest; LastAppliedTick = appliedTick; LastActionSourceTick = appliedTick;
     }
+    public void ApplyNativeActions(float[] deltas, Vector2 localGoal, Vector2 worldGoal, int controlTicks, int appliedTick) { ApplyNativeActions(deltas, localGoal, controlTicks, appliedTick); CurrentWorldGoal = worldGoal; HasWorldGoal = true; }
     private void OnDestroy()
     {
         // Keep the bridge registry correct even when a phenotype is removed by
@@ -56,7 +59,7 @@ public class CreatureBrain : MonoBehaviour
             largestDelta = Mathf.Max(largestDelta, Mathf.Abs(delta));
             limb.ApplyIntervalDelta(delta, controlTicks, Time.fixedDeltaTime);
         }
-        CurrentGoal = Vector2.ClampMagnitude(goal, .25f);
+        CurrentGoal = Vector2.ClampMagnitude(goal, NativeCreatureModel.GoalMagnitude);
         LastActionSourceTick = sourceTick;
         LastAppliedTick = appliedTick;
         LastActionMagnitude = largestDelta;

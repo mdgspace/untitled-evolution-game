@@ -14,6 +14,12 @@ public class Predator : MonoBehaviour
     private readonly Dictionary<CreatureIdentity, int> overlapCounts = new Dictionary<CreatureIdentity, int>();
     private readonly Dictionary<CreatureIdentity, int> consecutive = new Dictionary<CreatureIdentity, int>();
 
+    private bool NativePredatorKillsEnabled()
+    {
+        NativeEcosystemController controller = FindAnyObjectByType<NativeEcosystemController>();
+        return controller == null || controller.PredatorKillsEnabled;
+    }
+
     public void Forget(CreatureIdentity identity)
     {
         if (identity == null) return;
@@ -55,6 +61,7 @@ public class Predator : MonoBehaviour
             if (identity == null || identity.torso == null) { overlapCounts.Remove(identity); consecutive.Remove(identity); }
         foreach (CreatureIdentity identity in new List<CreatureIdentity>(consecutive.Keys))
             if (identity == null || !overlapCounts.ContainsKey(identity)) consecutive.Remove(identity);
+        if (!NativePredatorKillsEnabled()) { consecutive.Clear(); return; }
         foreach (CreatureIdentity identity in new List<CreatureIdentity>(overlapCounts.Keys)) {
             consecutive.TryGetValue(identity, out int ticks); ticks++; consecutive[identity] = ticks;
             CreatureBrain brain = identity.torso == null ? null : identity.torso.GetComponent<CreatureBrain>();
