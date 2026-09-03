@@ -8,7 +8,7 @@ using UnityEngine;
 public class EnvironmentSpawner : MonoBehaviour
 {
     [Header("Ground")]
-    public float groundWidth = 400f;
+    public float groundWidth = WorldLayout.WorldBoundaryHalfWidth * 2f;
     public float groundThickness = 1f;
     public Vector2 groundCenter = new Vector2(0f, -5f);
 
@@ -95,6 +95,14 @@ public class EnvironmentSpawner : MonoBehaviour
         SpawnPredators();
         EnsureTrainingPools();
         nextTrainingEpisode = Time.time + trainingEpisodeSeconds;
+    }
+
+    // NativeEcosystemController calls this during startup so Inspector values
+    // cannot bypass the explicit telemetry-button activation path.
+    public void LockFeaturesUntilExplicitEnable()
+    {
+        startFeaturesEnabled = false;
+        DisableFeatures();
     }
 
     public void DisableFeatures()
@@ -199,7 +207,7 @@ public class EnvironmentSpawner : MonoBehaviour
             float distance = Range(trainingFoodMinimumDistance, trainingFoodMaximumDistance);
             float side = trainingRandom.Next(2) == 0 ? -1f : 1f;
             Vector2 point = new Vector2(target.torso.transform.position.x + side * distance, foodHeight);
-            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldHalfWidth + 2f, WorldLayout.WorldHalfWidth - 2f);
+            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldBoundaryHalfWidth + 2f, WorldLayout.WorldBoundaryHalfWidth - 2f);
             spawnedFood[i].PlaceAt(point);
         }
         for (int i = 0; i < spawnedHighEnergyFood.Count; i++)
@@ -208,7 +216,7 @@ public class EnvironmentSpawner : MonoBehaviour
             float distance = Range(trainingFoodMaximumDistance, trainingFoodMaximumDistance + 8f);
             float side = trainingRandom.Next(2) == 0 ? -1f : 1f;
             Vector2 point = new Vector2(target.torso.transform.position.x + side * distance, foodHeight);
-            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldHalfWidth + 2f, WorldLayout.WorldHalfWidth - 2f);
+            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldBoundaryHalfWidth + 2f, WorldLayout.WorldBoundaryHalfWidth - 2f);
             spawnedHighEnergyFood[i].PlaceAt(point);
         }
         for (int i = 0; i < spawnedPredators.Count; i++)
@@ -217,7 +225,7 @@ public class EnvironmentSpawner : MonoBehaviour
             float distance = Range(trainingPredatorMinimumDistance, trainingPredatorMaximumDistance);
             float side = trainingRandom.Next(2) == 0 ? -1f : 1f;
             Vector2 point = new Vector2(target.torso.transform.position.x + side * distance, foodHeight + .15f);
-            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldHalfWidth + 3f, WorldLayout.WorldHalfWidth - 3f);
+            point.x = Mathf.Clamp(point.x, -WorldLayout.WorldBoundaryHalfWidth + 3f, WorldLayout.WorldBoundaryHalfWidth - 3f);
             spawnedPredators[i].PlaceAt(point);
         }
     }
@@ -265,7 +273,7 @@ public class EnvironmentSpawner : MonoBehaviour
                 foodMinimumSpawnDistance + Mathf.Min(1.2f, foodSpawnRadius));
             float direction = Random.value < .5f ? -1f : 1f;
             Vector2 candidate = new Vector2(target.torso.transform.position.x + direction * distance, height);
-            if (Mathf.Abs(candidate.x) < WorldLayout.WorldHalfWidth - 1f &&
+            if (Mathf.Abs(candidate.x) < WorldLayout.WorldBoundaryHalfWidth - 1f &&
                 IsClearOfLivingCreatures(candidate, foodScale + .15f)) return candidate;
         }
         return InitialFoodPosition(Random.Range(0, foodCount));

@@ -5,8 +5,8 @@ using UnityEngine.InputSystem;
 public class ObserverCamera : MonoBehaviour
 {
     public float panSpeed = 28f;
-    public float worldMinX = -200f;
-    public float worldMaxX = 200f;
+    public float worldMinX = -WorldLayout.WorldBoundaryHalfWidth;
+    public float worldMaxX = WorldLayout.WorldBoundaryHalfWidth;
     public float worldMinY = -8f;
     public float worldMaxY = 24f;
     public float minimumZoom = 4f;

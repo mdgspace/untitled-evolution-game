@@ -28,7 +28,12 @@ public static class BodyUtils
 // drifting back into a small centre-of-map cluster.
 public static class WorldLayout
 {
+    // Keep controller normalization stable while expanding the physical arena.
+    // Changing this value would rescale learned M1/M2 inputs mid-training.
     public const float WorldHalfWidth = 200f;
+    public const float WorldBoundaryHalfWidth = 280f;
+    public const float GoalBoundaryMargin = 8f;
+    public const float GoalHalfWidth = WorldBoundaryHalfWidth - GoalBoundaryMargin;
     public const float GroundTop = -4.5f;
     public const int SpawnColumns = 6;
     public const int MaximumNativeSpawnSlots = 10;

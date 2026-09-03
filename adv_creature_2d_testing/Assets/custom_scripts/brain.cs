@@ -9,6 +9,10 @@ public class CreatureBrain : MonoBehaviour
     public List<Limb> allLimbs = new List<Limb>();
     public JObject LatestTelemetry { get; private set; }
     public bool IsDead { get; private set; }
+    // The native ecosystem owns whether its current training phase permits
+    // lifecycle turnover.  Keeping this on the brain also blocks direct death
+    // calls from energy, predators, and fault handling while the phase is off.
+    public bool DeathsEnabled { get; set; } = true;
     public string DeathReason { get; private set; }
     public float BornTime { get; private set; }
     public int LastAppliedTick { get; private set; } = -1;
@@ -73,13 +77,13 @@ public class CreatureBrain : MonoBehaviour
         if (torso.energy <= 0f) Kill("energy");
     }
     public void Kill(string reason) {
-        if (IsDead) return;
+        if (!DeathsEnabled || IsDead) return;
         IsDead = true; DeathReason = reason;
         CreatureIdentity identity = torso == null || torso.bodyPart == null ? null : torso.bodyPart.identity;
         if (identity != null)
             foreach (Predator predator in FindObjectsByType<Predator>(FindObjectsInactive.Include)) predator.Forget(identity);
         foreach (Limb limb in allLimbs) if (limb != null) limb.DisablePhenotype();
-        torso.DisablePhenotype();
+        if (torso != null) torso.DisablePhenotype();
     }
     public JObject ToObservation(IReadOnlyList<CreatureIdentity> population = null) {
         JObject locals = new JObject(); JArray limbs = new JArray();

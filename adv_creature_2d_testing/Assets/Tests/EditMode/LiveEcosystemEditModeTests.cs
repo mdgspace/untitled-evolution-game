@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
@@ -8,142 +10,131 @@ using UnityEngine;
 public class LiveEcosystemEditModeTests
 {
     [Test]
-    public void FeedForwardSchemaHasExactOpenLoopShapes()
+    public void V18WidthsDepthsAndHeadPartitionsAreExact()
     {
-        NativeBrainWeights w=NativeBrainWeights.Create(1);
-        Assert.AreEqual(32,NativeCreatureModel.Hidden);Assert.AreEqual(4,NativeCreatureModel.M2AttentionHeads);Assert.AreEqual(8,NativeCreatureModel.M3AttentionHeads);Assert.AreEqual(5,NativeCreatureModel.M2MlpHiddenLayers);Assert.AreEqual(5,NativeCreatureModel.M3MlpHiddenLayers);Assert.AreEqual(2,NativeCreatureModel.M2TransformerBlocks);Assert.AreEqual(2,NativeCreatureModel.M3TransformerBlocks);Assert.AreEqual(5,NativeCreatureModel.PlanningHorizon);Assert.AreEqual(4,NativeCreatureModel.ActionTicks);Assert.AreEqual(20,NativeCreatureModel.SequenceTicks);
-        Assert.AreEqual(28,NativeCreatureModel.M1InputSize);
-        Assert.AreEqual(8,NativeCreatureModel.M2ContextSize);Assert.AreEqual(6,NativeCreatureModel.M3ContextSize);Assert.AreEqual(4,NativeCreatureModel.JointFeatureSize);Assert.AreEqual(9,NativeCreatureModel.M3JointInputSize);Assert.AreEqual(10,NativeCreatureModel.M3OutputSize);
-        Assert.AreEqual(8*32,w.m2Context.Length);Assert.AreEqual(4*32,w.m2Joint.Length);Assert.AreEqual(32*32,w.m2AttentionQuery2.Length);Assert.AreEqual(32*32,w.m2AttentionKey2.Length);Assert.AreEqual(32*32,w.m2AttentionValue2.Length);Assert.AreEqual(32*32,w.m2Deep1.Length);Assert.AreEqual(32*32,w.m2Deep2.Length);Assert.AreEqual(32*32,w.m2Deep3.Length);Assert.AreEqual(32*5,w.m2Output.Length);Assert.AreEqual(32*7+5,w.m2Bias.Length);Assert.AreEqual(6*32,w.m3Context.Length);Assert.AreEqual(9*32,w.m3Joint.Length);Assert.AreEqual(32*32,w.m3AttentionQuery2.Length);Assert.AreEqual(32*32,w.m3AttentionKey2.Length);Assert.AreEqual(32*32,w.m3AttentionValue2.Length);Assert.AreEqual(32*32,w.m3Deep1.Length);Assert.AreEqual(32*32,w.m3Deep2.Length);Assert.AreEqual(32*32,w.m3Deep3.Length);Assert.AreEqual(32*10,w.m3Output.Length);Assert.AreEqual(32*7+10,w.m3Bias.Length);
-        string fields=string.Join(" ",typeof(NativeBrainWeights).GetFields().Select(f=>f.Name)).ToLowerInvariant();StringAssert.DoesNotContain("recurrent",fields);StringAssert.DoesNotContain("history",fields);
+        Assert.AreEqual(32,NativeCreatureModel.M1Width);Assert.AreEqual(128,NativeCreatureModel.M2Width);Assert.AreEqual(128,NativeCreatureModel.M3Width);
+        Assert.AreEqual(2,NativeCreatureModel.M2TransformerBlocks);Assert.AreEqual(3,NativeCreatureModel.M3TransformerBlocks);Assert.AreEqual(4,NativeCreatureModel.M2AttentionHeads);Assert.AreEqual(4,NativeCreatureModel.M3AttentionHeads);Assert.AreEqual(32,NativeCreatureModel.M2Width/NativeCreatureModel.M2AttentionHeads);
+        Assert.AreEqual(3,NativeCreatureModel.M2MlpHiddenLayers);Assert.AreEqual(4,NativeCreatureModel.M3MlpHiddenLayers);
+        NativeBrainWeights policy=NativeBrainWeights.Create(1);NativeDynamicsWeights dynamics=NativeDynamicsWeights.Create(2);
+        Assert.AreEqual(28*32,policy.m1Input.Length);Assert.AreEqual(10*128,policy.m2Context.Length);Assert.AreEqual(7*128,policy.m2Joint.Length);Assert.AreEqual(16*128,policy.m2Position.Length);Assert.AreEqual(5*128,policy.m2StepEmbedding.Length);Assert.AreEqual(128,policy.m2Output.Length);
+        Assert.AreEqual(NativeCreatureModel.M2ParameterCount,policy.M2Parameters().Sum(p=>p.Value.Length));
+        Assert.AreEqual(12*128,dynamics.joint.Length);Assert.AreEqual(5*128,dynamics.horizonQueries.Length);Assert.AreEqual(128*9,dynamics.output.Length);
     }
 
     [Test]
-    public void PaddedJointTokensAndActionsAreStrictlyMasked()
+    public void PolicyOwnsOnlyM1M2AndDynamicsIsSingleSeparateType()
     {
-        NativeBrainWeights m2=NativeBrainWeights.Create(41),m3=NativeBrainWeights.Create(42);NativeObservation clean=ObservationFixture(10000);NativeObservation padded=JsonConvert.DeserializeObject<NativeObservation>(JsonConvert.SerializeObject(clean));
-        int paddedJoint=NativeCreatureModel.MaxLimbs-1;for(int i=0;i<4;i++)padded.jointFeatures[paddedJoint*4+i]=1000f+i;for(int i=0;i<2;i++)padded.positionEncodings[paddedJoint*2+i]=-1000f-i;
-        Assert.AreEqual(NativeCreatureModel.M2LossForTesting(clean,m2,m3),NativeCreatureModel.M2LossForTesting(padded,m2,m3),1e-7f);
-        NativeCompletedSequence a=SequenceFixture(),b=JsonConvert.DeserializeObject<NativeCompletedSequence>(JsonConvert.SerializeObject(a));for(int s=0;s<NativeCreatureModel.PlanningHorizon;s++)b.actions[s*NativeCreatureModel.MaxLimbs+paddedJoint]=1000f;
-        Assert.AreEqual(NativeCreatureModel.M3LossForTesting(a,m3),NativeCreatureModel.M3LossForTesting(b,m3),1e-7f);
+        string policyFields=string.Join(" ",typeof(NativeBrainWeights).GetFields().Select(f=>f.Name)).ToLowerInvariant();StringAssert.DoesNotContain("m3",policyFields);StringAssert.DoesNotContain("recurrent",policyFields);StringAssert.DoesNotContain("gru",policyFields);
+        Assert.IsTrue(typeof(NativeEcosystemCheckpoint).GetField("sharedM3").FieldType==typeof(NativeDynamicsWeights));
     }
 
     [Test]
-    public void JointAngleAndVelocityUseTwoDimensionalOrientationGeometry()
+    public void ContactAndOrientationJointFeaturesAreExact()
     {
-        float[] f=NativeCreatureModel.JointFeatures(90f,360f);Assert.AreEqual(1f,f[0],1e-5f);Assert.AreEqual(0f,f[1],1e-5f);Assert.AreEqual(0f,f[2],1e-5f);Assert.AreEqual(-.5f,f[3],1e-5f);
-        float[] zero=NativeCreatureModel.JointFeatures(0f,-720f);Assert.AreEqual(-1f,zero[2],1e-5f);Assert.AreEqual(0f,zero[3],1e-5f);
+        float[] f=NativeCreatureModel.JointFeatures(90f,360f,true,false,true);Assert.AreEqual(7,f.Length);Assert.AreEqual(1f,f[0],1e-5f);Assert.AreEqual(0f,f[1],1e-5f);Assert.AreEqual(0f,f[2],1e-5f);Assert.AreEqual(-.5f,f[3],1e-5f);CollectionAssert.AreEqual(new[]{1f,0f,1f},f.Skip(4).ToArray());
     }
 
     [Test]
-    public void JointPathEncodingIsDeterministicAndTopologySensitive()
+    public void TopologyEncodingIsDeterministicUniformAndIdentityFree()
     {
-        float[] a=NativeCreatureModel.JointPositionEncoding(new[]{1,3},5),b=NativeCreatureModel.JointPositionEncoding(new[]{1,3},5),c=NativeCreatureModel.JointPositionEncoding(new[]{1,4},5);CollectionAssert.AreEqual(a,b);Assert.Greater(Mathf.Abs(a[0]-c[0])+Mathf.Abs(a[1]-c[1]),1e-4f);Assert.AreEqual(1f,a[0]*a[0]+a[1]*a[1],1e-5f);
+        float[] a=NativeCreatureModel.JointPositionEncoding(new[]{5,3},99),b=NativeCreatureModel.JointPositionEncoding(new[]{5,3},-7),c=NativeCreatureModel.JointPositionEncoding(new[]{5,2},99);Assert.AreEqual(16,a.Length);CollectionAssert.AreEqual(a,b);Assert.Greater(Difference(a,c),1e-4f);Assert.AreEqual(1f,a[0]);Assert.AreEqual(1f,a[5]);Assert.AreEqual(0f,a[10]);Assert.AreEqual(2f/3f,a[15],1e-6f);
     }
 
     [Test]
-    public void FixedAndM1CadencesAreSequenceAligned()
+    public void PaddedLimbFeaturesAndActionsAreMasked()
     {
-        Assert.AreEqual(1320,NativeCreatureModel.GoalWindowTicks);Assert.AreEqual(20,NativeCreatureModel.M1GoalWindowTicks);Assert.AreEqual(12f,NativeCreatureModel.FixedTrainingGoal(1319).x);Assert.AreEqual(-12f,NativeCreatureModel.FixedTrainingGoal(1320).x);Assert.AreEqual(12f,NativeCreatureModel.FixedTrainingGoal(2640).x);
+        NativeObservation clean=ObservationFixture(10000),padded=JsonConvert.DeserializeObject<NativeObservation>(JsonConvert.SerializeObject(clean));int limb=NativeCreatureModel.MaxLimbs-1;for(int i=0;i<7;i++)padded.jointFeatures[limb*7+i]=1000+i;for(int i=0;i<16;i++)padded.positionEncodings[limb*16+i]=-1000-i;NativeBrainWeights policy=NativeBrainWeights.Create(3);NativeDynamicsWeights dynamics=NativeDynamicsWeights.Create(4);Assert.AreEqual(NativeCreatureModel.M2LossForTesting(clean,policy,dynamics),NativeCreatureModel.M2LossForTesting(padded,policy,dynamics),1e-6f);NativeCompletedSequence first=SequenceFixture("a"),second=CloneSequence(first);for(int s=0;s<5;s++)second.actions[s*NativeCreatureModel.MaxLimbs+limb]=999f;Assert.AreEqual(NativeCreatureModel.M3LossForTesting(first,dynamics),NativeCreatureModel.M3LossForTesting(second,dynamics),1e-6f);
     }
 
     [Test]
-    public void TemporaryGoalRewardIsLargeAndHasAReachRadius()
+    public void SiLUAndRmsNormGradientsMatchCentralDifference()
     {
-        Assert.AreEqual(100f,NativeEcosystemController.TemporaryGoalRewardEnergy);Assert.AreEqual(1.25f,NativeEcosystemController.TemporaryGoalReachRadius);Vector2 goal=new Vector2(12f,-4f);Assert.IsTrue(NativeEcosystemController.IsTemporaryGoalReached(goal+Vector2.right*1.25f,goal));Assert.IsFalse(NativeEcosystemController.IsTemporaryGoalReached(goal+Vector2.right*1.251f,goal));
+        float x=.37f,epsilon=1e-3f;float numerical=(NativeCreatureModel.SiLU(x+epsilon)-NativeCreatureModel.SiLU(x-epsilon))/(2f*epsilon);Assert.AreEqual(numerical,NativeCreatureModel.SiLUDerivative(x),1e-4f);
+        float[] input=Enumerable.Range(0,128).Select(i=>(i-63f)/80f).ToArray(),gamma=Enumerable.Repeat(1f,128).ToArray(),upstream=Enumerable.Range(0,128).Select(i=>Mathf.Sin(i*.13f)).ToArray();float[] analytic=NativeCreatureModel.RmsNormInputGradientForTesting(input,gamma,upstream);int index=37;float original=input[index];input[index]=original+epsilon;float plus=Dot(NativeCreatureModel.RmsNormForTesting(input,gamma),upstream);input[index]=original-epsilon;float minus=Dot(NativeCreatureModel.RmsNormForTesting(input,gamma),upstream);AssertRelative(analytic[index],(plus-minus)/(2f*epsilon),.002f);
     }
 
     [Test]
-    public void M1WorldGoalStaysAnchoredWithoutGroundProjection()
+    public void M3PoseAndAuxiliaryGradientsReachSharedOutputAndQueries()
     {
-        var model=new NativeCreatureModel(NativeBrainWeights.Create(77),78);float[] global=new float[NativeCreatureModel.M1InputSize];NativeLocalProprioception firstProprio=new NativeLocalProprioception{worldPosition=new Vector2(10f,3f)},movedProprio=new NativeLocalProprioception{worldPosition=new Vector2(40f,8f)};NativeObservation first=model.Observe(global,Array.Empty<Limb>(),0,firstProprio,true),second=model.Observe(global,Array.Empty<Limb>(),NativeCreatureModel.SequenceTicks,movedProprio,true);Assert.AreEqual(first.worldGoal.x,second.worldGoal.x,1e-6f);Assert.AreEqual(first.worldGoal.y,second.worldGoal.y,1e-6f);Assert.AreNotEqual(NativeCreatureModel.FixedGoalWorldHeight,first.worldGoal.y);
+        NativeDynamicsWeights dynamics=NativeDynamicsWeights.Create(11);NativeCompletedSequence sample=SequenceFixture("gradient");float[] output=NativeCreatureModel.M3GradientForTesting(sample,dynamics,"output"),queries=NativeCreatureModel.M3GradientForTesting(sample,dynamics,"horizonQueries");Assert.Greater(output.Sum(Mathf.Abs),1e-6f);Assert.Greater(queries.Sum(Mathf.Abs),1e-6f);
+        int index=Largest(output);float original=dynamics.output[index],epsilon=5e-4f;dynamics.output[index]=original+epsilon;float plus=NativeCreatureModel.M3LossForTesting(sample,dynamics);dynamics.output[index]=original-epsilon;float minus=NativeCreatureModel.M3LossForTesting(sample,dynamics);AssertRelative(output[index],(plus-minus)/(2f*epsilon),.05f);
     }
 
     [Test]
-    public void GoalDisplayCueIsBoundedButPreservesDirection()
+    public void M3AuxiliaryLossUsesVelocityMseAndContactBce()
     {
-        Vector2 origin=new Vector2(2f,-1f),far=new Vector2(20f,5f),near=new Vector2(3f,-1f);Vector2 cue=NativeGoalVisualizer.DisplayTarget(origin,far);Assert.AreEqual(NativeGoalVisualizer.MaximumDisplayDistance,(cue-origin).magnitude,1e-6f);Assert.Greater(Vector2.Dot(cue-origin,far-origin),0f);Assert.AreEqual(near,NativeGoalVisualizer.DisplayTarget(origin,near));
+        float[] predicted=new float[25],actual=new float[25];for(int s=0;s<5;s++){predicted[s*5+2]=predicted[s*5+3]=predicted[s*5+4]=.5f;actual[s*5]=.5f;actual[s*5+2]=1f;}float total=NativeCreatureModel.M3AuxiliaryLoss(predicted,actual,null,out float velocity,out float contact);Assert.Greater(velocity,0f);Assert.Greater(contact,0f);Assert.AreEqual(velocity+contact,total,1e-7f);Assert.IsTrue(NativeCreatureModel.IsFinite(total));
     }
 
     [Test]
-    public void GoalProgressColorsAreDistinctAndSemanticallyStable()
+    public void BoundaryBatchIsOneOrderIndependentAdamStep()
     {
-        Color toward=NativeGoalVisualizer.MovementColor(NativeGoalMovement.Toward),away=NativeGoalVisualizer.MovementColor(NativeGoalMovement.Away),still=NativeGoalVisualizer.MovementColor(NativeGoalMovement.Still);Assert.Greater(toward.g,toward.r);Assert.Greater(away.r,away.g);Assert.Greater(still.r,still.b);
+        var a=SequenceFixture("a");var b=SequenceFixture("b");b.actualPoses[0]+=.3f;NativeDynamicsWeights left=NativeDynamicsWeights.Create(20),right=left.Clone();var lo=new NativeOptimizerState();var ro=new NativeOptimizerState();NativeM3BatchMetrics lm=NativeCreatureModel.TrainSharedM3Batch(new[]{a,b},left,lo),rm=NativeCreatureModel.TrainSharedM3Batch(new[]{b,a},right,ro);Assert.AreEqual(2,lm.sampleCount);Assert.AreEqual(1,lm.optimizerSteps);Assert.AreEqual(1,lo.step);Assert.AreEqual(0f,Difference(left.output,right.output),1e-7f);Assert.AreEqual(lm.loss,rm.loss,1e-7f);
     }
 
     [Test]
-    public void EnergyBarClampsEnergyAndUsesFiftyTickRefreshCadence()
+    public void M2GradientFlowsThroughFrozenM3AndSharedStepDecoder()
     {
-        Assert.AreEqual(50,NativeEnergyBar.RefreshIntervalTicks);Assert.AreEqual(0f,NativeEnergyBar.EnergyFraction(-1f,200f));Assert.AreEqual(.5f,NativeEnergyBar.EnergyFraction(100f,200f));Assert.AreEqual(1f,NativeEnergyBar.EnergyFraction(300f,200f));Assert.AreEqual(0f,NativeEnergyBar.EnergyFraction(1f,0f));Color empty=NativeEnergyBar.EnergyColor(0f),full=NativeEnergyBar.EnergyColor(1f);Assert.Greater(empty.r,empty.g);Assert.Greater(full.g,full.r);
+        NativeBrainWeights policy=NativeBrainWeights.Create(30);NativeDynamicsWeights dynamics=NativeDynamicsWeights.Create(31),before=dynamics.Clone();NativeObservation observation=ObservationFixture(10000);float[] gradient=NativeCreatureModel.M2GradientForTesting(observation,policy,dynamics,"stepEmbedding");Assert.Greater(gradient.Sum(Mathf.Abs),1e-6f);var model=new NativeCreatureModel(policy,32);NativeActionSequence sequence=model.OptimizeAndPlan(observation,dynamics,100);Assert.AreEqual(1,model.M2Optimizer.step);Assert.AreEqual(0f,Difference(before.output,dynamics.output));for(int s=0;s<5;s++)for(int l=0;l<sequence.limbCount;l++)Assert.That(sequence.actions[s,l],Is.InRange(-8f,8f));
     }
 
     [Test]
-    public void BackLoadedGoalWeightsAreExact()
+    public void MutationScalingCompensatesForWiderPolicy()
     {
-        CollectionAssert.AreEqual(new[]{1f,1f,2f,4f,8f},NativeCreatureModel.GoalStepWeights);float[] p=new float[10];p[0]=1f;float early=NativeCreatureModel.M2GoalLoss(p,Vector2.zero);p=new float[10];p[8]=1f;float late=NativeCreatureModel.M2GoalLoss(p,Vector2.zero);Assert.AreEqual(8f*early,late,1e-6f);
+        Assert.That(NativeCreatureModel.M2MutationScale,Is.GreaterThan(0f).And.LessThan(1f));Assert.Greater(NativeBrainWeights.Create(40).M2Parameters().Sum(p=>p.Value.Length),NativeCreatureModel.V16M2ParameterCount);
     }
 
     [Test]
-    public void AntiZeroLossStronglyPunishesMissedRealMotionAndIsFiniteNearRest()
+    public void PoseLossWeightsAndCadenceRemainExact()
     {
-        float[] actual=new float[10];actual[8]=.1f;float zero=NativeCreatureModel.M3Loss(new float[10],actual,null,out float mse,out float relative);float correct=NativeCreatureModel.M3Loss((float[])actual.Clone(),actual,null,out _,out _);Assert.Greater(relative,mse*10f);Assert.AreEqual(0f,correct,1e-7f);
-        actual=new float[10];actual[0]=.005f;float near=NativeCreatureModel.M3Loss(new float[10],actual,null,out _,out float nearRelative);Assert.IsTrue(NativeCreatureModel.IsFinite(near));Assert.AreEqual(0f,nearRelative);
+        Assert.AreEqual(5,NativeCreatureModel.ActionTicks);Assert.AreEqual(25,NativeCreatureModel.SequenceTicks);Assert.AreEqual(25,NativeCreatureModel.M1GoalWindowTicks);Assert.AreEqual(1000,NativeCreatureModel.GoalWindowTicks);CollectionAssert.AreEqual(new[]{1f,1f,2f,4f,8f},NativeCreatureModel.GoalStepWeights);Assert.AreEqual(1.25f,NativeCreatureModel.M2HeadingLossWeight);float[] p=new float[20];for(int s=0;s<5;s++)p[s*4+3]=1f;p[0]=1f;float early=NativeCreatureModel.M2GoalLoss(p,Vector2.zero,Vector2.up);p=new float[20];for(int s=0;s<5;s++)p[s*4+3]=1f;p[16]=1f;Assert.AreEqual(8f*early,NativeCreatureModel.M2GoalLoss(p,Vector2.zero,Vector2.up),1e-6f);
     }
 
     [Test]
-    public void BiasUsesParityAndReachesExactlyZeroAtScaledTickCutoff()
+    public void AntiZeroLossPunishesMissedMotionAndIsFiniteNearRest()
     {
-        Assert.AreEqual(.5f,NativeCreatureModel.ActionBiasStrength(0),1e-7f);Assert.That(NativeCreatureModel.ActionBiasStrength(6666),Is.InRange(.2499f,.2501f));Assert.Greater(NativeCreatureModel.ActionBiasStrength(13332),0f);Assert.AreEqual(0f,NativeCreatureModel.ActionBiasStrength(13333));
-        Assert.AreEqual(.375f,NativeCreatureModel.BiasAction(0f,.5f,0,0),1e-6f);Assert.AreEqual(-.375f,NativeCreatureModel.BiasAction(0f,.5f,1,0),1e-6f);Assert.AreEqual(0f,NativeCreatureModel.BiasAction(0f,0f,0,0));
+        float[] actual=new float[20];for(int s=0;s<5;s++)actual[s*4+3]=1f;actual[16]=.1f;float zero=NativeCreatureModel.M3Loss(new float[20],actual,null,out float mse,out float relative),correct=NativeCreatureModel.M3Loss((float[])actual.Clone(),actual,null,out _,out _);Assert.Greater(relative,mse*2f);Assert.AreEqual(0f,correct,1e-7f);Assert.IsTrue(NativeCreatureModel.IsFinite(zero));
     }
 
     [Test]
-    public void ExplorationDecaysExponentiallyToPersistentFloor()
+    public void BinaryTensorStoreRoundTripsAndDetectsCorruption()
     {
-        Assert.AreEqual(.5f,NativeCreatureModel.ExplorationSigma(0),1e-6f);Assert.That(NativeCreatureModel.ExplorationSigma(5000),Is.InRange(.05f,.5f));Assert.AreEqual(.05f,NativeCreatureModel.ExplorationSigma(10000),1e-6f);Assert.AreEqual(.05f,NativeCreatureModel.ExplorationSigma(20000),1e-6f);
+        string directory=Path.Combine(Path.GetTempPath(),"native-v18-test-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);string file=Path.Combine(directory,"native_ecosystem_v18.test.bin");try{var checkpoint=CheckpointFixture();NativeTensorCheckpointStore.Write(file,checkpoint);string hash=NativeTensorCheckpointStore.Sha256(file);string json=JsonConvert.SerializeObject(checkpoint);StringAssert.DoesNotContain("m2Context",json);StringAssert.DoesNotContain("\"slots\"",json);var metadata=JsonConvert.DeserializeObject<NativeEcosystemCheckpoint>(json);NativeTensorCheckpointStore.Read(file,metadata);Assert.AreEqual(checkpoint.sharedM3.output[10],metadata.sharedM3.output[10]);Assert.AreEqual(checkpoint.creatures[0].brain.weights.m2Context[10],metadata.creatures[0].brain.weights.m2Context[10]);Assert.AreEqual(hash,NativeTensorCheckpointStore.Sha256(file));using(var stream=new FileStream(file,FileMode.Open,FileAccess.Write))stream.SetLength(stream.Length/2);Assert.Catch<Exception>(()=>NativeTensorCheckpointStore.Read(file,JsonConvert.DeserializeObject<NativeEcosystemCheckpoint>(json)));}finally{Directory.Delete(directory,true);}
     }
 
     [Test]
-    public void M3AnalyticOutputGradientMatchesCentralDifference()
+    public void V18SchemaRejectsV17Fingerprint()
     {
-        NativeBrainWeights w=NativeBrainWeights.Create(11);NativeCompletedSequence sample=SequenceFixture();float[] analytic=NativeCreatureModel.M3GradientForTesting(sample,w,"output");int index=Largest(analytic);float original=w.m3Output[index],epsilon=1e-3f;w.m3Output[index]=original+epsilon;float plus=NativeCreatureModel.M3LossForTesting(sample,w);w.m3Output[index]=original-epsilon;float minus=NativeCreatureModel.M3LossForTesting(sample,w);w.m3Output[index]=original;AssertRelative(analytic[index],(plus-minus)/(2f*epsilon),.03f);
+        var checkpoint=new NativeEcosystemCheckpoint();Assert.AreEqual(18,checkpoint.schema);StringAssert.Contains("native-v18",checkpoint.configuration);Assert.IsFalse(NativeEcosystemCheckpoint.IsCompatibleConfiguration("native-v17"));
     }
 
     [Test]
-    public void M2AnalyticGradientThroughFrozenM3MatchesCentralDifference()
+    public void FixedGoalHeadingFacesGoalAndM1GoalRemainsUnprojected()
     {
-        NativeBrainWeights m2=NativeBrainWeights.Create(21),m3=NativeBrainWeights.Create(22);NativeObservation observation=ObservationFixture(10000);float[] analytic=NativeCreatureModel.M2GradientForTesting(observation,m2,m3,"output");int index=Largest(analytic);float original=m2.m2Output[index],epsilon=1e-3f;m2.m2Output[index]=original+epsilon;float plus=NativeCreatureModel.M2LossForTesting(observation,m2,m3);m2.m2Output[index]=original-epsilon;float minus=NativeCreatureModel.M2LossForTesting(observation,m2,m3);m2.m2Output[index]=original;AssertRelative(analytic[index],(plus-minus)/(2f*epsilon),.04f);
+        var model=new NativeCreatureModel(NativeBrainWeights.Create(50),51);Vector2 start=new Vector2(0f,NativeCreatureModel.FixedGoalWorldHeight);NativeObservation fixedGoal=model.Observe(new float[28],Array.Empty<Limb>(),0,new NativeLocalProprioception{worldPosition=start,worldRotationDegrees=0f},false);Vector2 front=new Vector2(fixedGoal.worldGoalHeading.y,fixedGoal.worldGoalHeading.x);Assert.Greater(Vector2.Dot(front,(fixedGoal.worldGoal-start).normalized),.9999f);var m1=new NativeCreatureModel(NativeBrainWeights.Create(52),53);NativeObservation first=m1.Observe(new float[28],Array.Empty<Limb>(),0,new NativeLocalProprioception{worldPosition=new Vector2(10f,3f)},true),moved=m1.Observe(new float[28],Array.Empty<Limb>(),20,new NativeLocalProprioception{worldPosition=new Vector2(40f,8f)},true);Assert.AreEqual(first.worldGoal,moved.worldGoal);Assert.AreNotEqual(NativeCreatureModel.FixedGoalWorldHeight,first.worldGoal.y);
     }
 
     [Test]
-    public void OneM2UpdateChangesEveryM2ParameterAndFreezesSharedM3()
+    public void BiasExplorationAndTemporaryGoalCadencesRemainStable()
     {
-        NativeBrainWeights controller=NativeBrainWeights.Create(31),shared=NativeBrainWeights.Create(32),sharedBefore=shared.Clone();var before=controller.M2Parameters().ToDictionary(p=>p.Key,p=>(float[])p.Value.Clone());var model=new NativeCreatureModel(controller,33);NativeActionSequence sequence=model.OptimizeAndPlan(ObservationFixture(10000),shared,0);
-        foreach(var parameter in controller.M2Parameters())Assert.Greater(Difference(before[parameter.Key],parameter.Value),0f,parameter.Key);foreach(var pair in shared.M3Parameters().Zip(sharedBefore.M3Parameters(),(a,b)=>new{a,b}))Assert.AreEqual(0f,Difference(pair.a.Value,pair.b.Value),pair.a.Key);Assert.AreEqual(1,model.M2Optimizer.step);for(int s=0;s<5;s++)for(int l=0;l<sequence.limbCount;l++)Assert.That(sequence.actions[s,l],Is.InRange(-8f,8f));
+        Assert.AreEqual(.5f,NativeCreatureModel.ActionBiasStrength(0),1e-7f);Assert.Greater(NativeCreatureModel.ActionBiasStrength(16666),0f);Assert.AreEqual(0f,NativeCreatureModel.ActionBiasStrength(16667));Assert.AreEqual(.5f,NativeCreatureModel.ExplorationSigma(0),1e-6f);Assert.AreEqual(.05f,NativeCreatureModel.ExplorationSigma(10000),1e-6f);Assert.AreEqual(12f,NativeCreatureModel.FixedTrainingGoal(999).x);Assert.AreEqual(-12f,NativeCreatureModel.FixedTrainingGoal(1000).x);
     }
 
     [Test]
-    public void V13CheckpointUsesPrimitiveActionStorageOnly()
+    public void ExistingVisualAndDeathContractsRemainIntact()
     {
-        var checkpoint=new NativeEcosystemCheckpoint();Assert.AreEqual(13,checkpoint.schema);StringAssert.Contains("native-v13",checkpoint.configuration);string json=JsonConvert.SerializeObject(SequenceFixture());StringAssert.Contains("actions",json);StringAssert.DoesNotContain("normalized",json);Assert.IsFalse(typeof(NativeCompletedSequence).GetFields().Any(f=>f.FieldType==typeof(float[,])));Assert.IsFalse(typeof(NativeObservation).GetFields().Any(f=>f.FieldType==typeof(Vector2)));Assert.AreEqual(5,JsonConvert.DeserializeObject<NativeCompletedSequence>(json).ActionMatrix().GetLength(0));
-    }
-
-    [Test]
-    public void ExplorationAndAdamResumeDeterministicallyFromV13CreatureState()
-    {
-        NativeBrainWeights shared=NativeBrainWeights.Create(51);var first=new NativeCreatureModel(NativeBrainWeights.Create(52),53);first.OptimizeAndPlan(ObservationFixture(10000),shared,321);
-        NativeCreatureSave persisted=JsonConvert.DeserializeObject<NativeCreatureSave>(JsonConvert.SerializeObject(first.Capture()));var resumed=new NativeCreatureModel(persisted.weights,999);resumed.Restore(persisted);
-        NativeActionSequence expected=first.OptimizeAndPlan(ObservationFixture(13353),shared,322),actual=resumed.OptimizeAndPlan(ObservationFixture(13353),shared,322);
-        for(int s=0;s<NativeCreatureModel.PlanningHorizon;s++)for(int l=0;l<expected.limbCount;l++)Assert.AreEqual(expected.actions[s,l],actual.actions[s,l],1e-7f,$"step={s} limb={l}");Assert.AreEqual(first.M2Optimizer.step,resumed.M2Optimizer.step);
+        Assert.AreEqual(50,NativeEnergyBar.RefreshIntervalTicks);Assert.AreEqual(100f,NativeEcosystemController.TemporaryGoalRewardEnergy);Assert.AreEqual(1.25f,NativeEcosystemController.TemporaryGoalReachRadius);GameObject body=new GameObject("death-gate-test");try{CreatureBrain brain=body.AddComponent<CreatureBrain>();brain.DeathsEnabled=false;brain.Kill("blocked");Assert.IsFalse(brain.IsDead);}finally{UnityEngine.Object.DestroyImmediate(body);}
     }
 
     private static NativeObservation ObservationFixture(int tick)
     {
-        var o=new NativeObservation{torsoWithGoal=new[]{.1f,.05f,.2f,-.1f,.3f,.95f,.4f,.1f},torsoWithoutGoal=new[]{.1f,.05f,.2f,-.1f,.3f,.95f},jointFeatures=new float[NativeCreatureModel.MaxLimbs*4],positionEncodings=new float[NativeCreatureModel.MaxLimbs*2],limbCount=2,goal=new Vector2(.4f,.1f),tick=tick};
-        Array.Copy(NativeCreatureModel.JointFeatures(15f,30f),0,o.jointFeatures,0,4);Array.Copy(NativeCreatureModel.JointFeatures(-20f,-40f),0,o.jointFeatures,4,4);Array.Copy(NativeCreatureModel.JointPositionEncoding(new[]{1},1),0,o.positionEncodings,0,2);Array.Copy(NativeCreatureModel.JointPositionEncoding(new[]{2},5),0,o.positionEncodings,2,2);return o;
+        var o=new NativeObservation{torsoWithGoal=new[]{.1f,.05f,.2f,-.1f,.3f,.95f,.4f,.1f,.2f,.98f},torsoWithoutGoal=new[]{.1f,.05f,.2f,-.1f,.3f,.95f},jointFeatures=new float[NativeCreatureModel.MaxLimbs*7],positionEncodings=new float[NativeCreatureModel.MaxLimbs*16],limbCount=2,goal=new Vector2(.4f,.1f),goalHeading=new Vector2(.2f,.98f),tick=tick};Array.Copy(NativeCreatureModel.JointFeatures(15f,30f,true,false,false),0,o.jointFeatures,0,7);Array.Copy(NativeCreatureModel.JointFeatures(-20f,-40f,false,true,true),0,o.jointFeatures,7,7);Array.Copy(NativeCreatureModel.JointPositionEncoding(new[]{1},1),0,o.positionEncodings,0,16);Array.Copy(NativeCreatureModel.JointPositionEncoding(new[]{2,3},3),0,o.positionEncodings,16,16);return o;
     }
-    private static NativeCompletedSequence SequenceFixture(){float[] actions=new float[NativeCreatureModel.PlanningHorizon*NativeCreatureModel.MaxLimbs];for(int i=0;i<actions.Length;i++)actions[i]=(i%7-3)*.2f;float[] actual=new float[10];for(int s=0;s<5;s++){actual[s*2]=.02f*(s+1);actual[s*2+1]=-.005f*s;}return new NativeCompletedSequence{observation=ObservationFixture(10000),actions=actions,actualPositions=actual};}
+    private static NativeCompletedSequence SequenceFixture(string id){float[] actions=new float[5*NativeCreatureModel.MaxLimbs];for(int i=0;i<actions.Length;i++)actions[i]=(i%7-3)*.2f;float[] poses=new float[20],aux=new float[25];for(int s=0;s<5;s++){int p=s*4;poses[p]=.02f*(s+1);poses[p+1]=-.005f*s;Vector2 heading=NativeCreatureModel.HeadingEncoding(s*5f);poses[p+2]=heading.x;poses[p+3]=heading.y;int a=s*5;aux[a]=.01f*s;aux[a+2]=s%2;aux[a+3]=.25f;aux[a+4]=.5f;}return new NativeCompletedSequence{sampleId=id,observation=ObservationFixture(10000),actions=actions,actualPoses=poses,actualAuxiliary=aux};}
+    private static NativeCompletedSequence CloneSequence(NativeCompletedSequence sample)=>JsonConvert.DeserializeObject<NativeCompletedSequence>(JsonConvert.SerializeObject(sample));
+    private static NativeEcosystemCheckpoint CheckpointFixture(){var policy=NativeBrainWeights.Create(60);var dynamics=NativeDynamicsWeights.Create(61);var model=new NativeCreatureModel(policy,62);model.OptimizeAndPlan(ObservationFixture(10000),dynamics,0);return new NativeEcosystemCheckpoint{sharedM3=dynamics,m3Optimizer=new NativeOptimizerState(),creatures=new List<NativeCreatureCheckpoint>{new NativeCreatureCheckpoint{creatureId="creature-a",brain=model.Capture()}},validation=new List<NativeCompletedSequence>{SequenceFixture("sample")}};}
     private static int Largest(float[] values){int index=0;for(int i=1;i<values.Length;i++)if(Mathf.Abs(values[i])>Mathf.Abs(values[index]))index=i;Assert.Greater(Mathf.Abs(values[index]),1e-7f);return index;}
     private static float Difference(float[] a,float[] b){float sum=0f;for(int i=0;i<Math.Min(a.Length,b.Length);i++)sum+=Mathf.Abs(a[i]-b[i]);return sum;}
+    private static float Dot(float[] a,float[] b){float sum=0f;for(int i=0;i<a.Length;i++)sum+=a[i]*b[i];return sum;}
     private static void AssertRelative(float analytic,float numerical,float tolerance){float relative=Mathf.Abs(analytic-numerical)/Mathf.Max(1e-5f,Mathf.Abs(analytic)+Mathf.Abs(numerical));Assert.Less(relative,tolerance,$"analytic={analytic} numerical={numerical}");}
 }

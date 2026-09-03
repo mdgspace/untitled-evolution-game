@@ -22,6 +22,7 @@ public sealed class GroundSurface : MonoBehaviour { }
 [RequireComponent(typeof(Rigidbody2D), typeof(SpriteRenderer), typeof(BoxCollider2D))]
 public class Torso : MonoBehaviour
 {
+    public const float FrontMarkerWidthFraction = .06f;
     public Vector2 dimensions;
     public float energy = 100f;
     public float maxEnergy = 200f;
@@ -65,6 +66,7 @@ public class Torso : MonoBehaviour
         SpriteRenderer sr = GetComponent<SpriteRenderer>(); sr.sprite = BodyUtils.GetSquareSprite(); sr.color = new Color(.85f,.3f,.3f);
         BoxCollider2D col = GetComponent<BoxCollider2D>(); col.size = Vector2.one; col.sharedMaterial = NativePhysicsMaterials.Body;
         transform.localScale = new Vector3(dimensions.x, dimensions.y, 1f);
+        CreateFrontMarker();
         bodyPart = gameObject.AddComponent<BodyPart>(); bodyPart.identity = identity;
         Dictionary<int, Rigidbody2D> parents = new Dictionary<int, Rigidbody2D> { { 0, rb } };
         Dictionary<int, int[]> paths = new Dictionary<int, int[]> { { 0, new int[0] } };
@@ -87,6 +89,20 @@ public class Torso : MonoBehaviour
             }
             if (!built) break; // malformed orphan gene: Python validation should already have removed it.
         }
+    }
+
+    // The marker lives in torso-local space: local +X is the sole front-side
+    // convention used by the pose-goal controller.  It deliberately owns no
+    // collider or rigidbody, so it cannot perturb morphology or M3 labels.
+    private void CreateFrontMarker()
+    {
+        GameObject marker = new GameObject("NativeTorsoFrontMarker");
+        marker.transform.SetParent(transform, false);
+        marker.transform.localPosition = new Vector3(.5f - FrontMarkerWidthFraction*.5f, 0f, -.02f);
+        float heightFraction = dimensions.y <= 1e-5f ? FrontMarkerWidthFraction : FrontMarkerWidthFraction*dimensions.x/dimensions.y;
+        marker.transform.localScale = new Vector3(FrontMarkerWidthFraction, heightFraction, 1f);
+        SpriteRenderer renderer = marker.AddComponent<SpriteRenderer>();
+        renderer.sprite = BodyUtils.GetSquareSprite(); renderer.color = Color.white; renderer.sortingOrder = 2;
     }
 
     public List<Limb> GetAllLimbs() => new List<Limb>(childLimbs);

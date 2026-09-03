@@ -375,8 +375,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: LiveEcosystem.Runtime::ObserverCamera
   panSpeed: 28
-  worldMinX: -200
-  worldMaxX: 200
+  worldMinX: -280
+  worldMaxX: 280
   worldMinY: -8
   worldMaxY: 24
   minimumZoom: 4
@@ -457,7 +457,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3d73b34279eb37e40b9d670c8c4926ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: LiveEcosystem.Runtime::EnvironmentSpawner
-  groundWidth: 400
+  groundWidth: 560
   groundThickness: 1
   groundCenter: {x: 0, y: -5}
   foodCount: 10
@@ -532,7 +532,7 @@ MonoBehaviour:
   allowForcedEvolution: 1
   loadCheckpointOnStart: 1
   bodyMutationCooldownGenerations: 12
-  checkpointFileName: native_ecosystem_v13.json
+  checkpointFileName: native_ecosystem_v16.json
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
