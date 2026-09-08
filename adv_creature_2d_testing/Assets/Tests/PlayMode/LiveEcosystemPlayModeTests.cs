@@ -26,18 +26,20 @@ public class LiveEcosystemPlayModeTests
         NativeEcosystemController native = null;
         while (Time.realtimeSinceStartup < deadline) {
             native = Object.FindAnyObjectByType<NativeEcosystemController>();
-            if (native != null && native.Population == 6) break;
+            if (native != null && native.Population == native.populationTarget) break;
             yield return null;
         }
         Assert.NotNull(native);
+        Assert.AreEqual(.02f,Time.fixedDeltaTime,1e-7f);
+        Assert.AreEqual(50f,native.PhysicsRateHz,1e-4f);
         Assert.AreEqual(0, Object.FindObjectsByType<PythonBridge>(FindObjectsInactive.Exclude).Count(component => component.isActiveAndEnabled));
         Assert.AreEqual(75f,native.evolutionIntervalSeconds);
         Assert.AreEqual(12,native.bodyMutationCooldownGenerations);
         EnvironmentSpawner environment = Object.FindAnyObjectByType<EnvironmentSpawner>();
         Assert.NotNull(environment);
         Assert.AreEqual(1, Object.FindObjectsByType<EnvironmentSpawner>(FindObjectsInactive.Exclude).Length);
-        Assert.AreEqual(6, native.Population, native.LastCheckpointError);
-        Assert.AreEqual(NativeEcosystemController.InitialBodySpeciesCount,native.SpeciesCount,"Fresh seed population should start with six structurally distinct bodies");
+        Assert.AreEqual(10, native.Population, native.LastCheckpointError);
+        Assert.That(native.SpeciesCount,Is.InRange(1,NativeEcosystemController.InitialBodySpeciesCount),native.LoadedFromCheckpoint?"Loaded populations retain their persisted species":"Fresh bodies are grouped by the morphology distance threshold");
         Assert.NotNull(Object.FindAnyObjectByType<ObserverCamera>());
         Assert.NotNull(GameObject.Find("WorldWallLeft"));
         Assert.NotNull(GameObject.Find("WorldWallRight"));
@@ -90,7 +92,7 @@ public class LiveEcosystemPlayModeTests
         Assert.Greater(native.SharedM3Updates, startM3 + 100, "Shared M3 did not continue training");
         Assert.Greater(native.LastM3BatchSize,0,"No completed creature sequence reached the shared M3 batch");
         Assert.Greater(actionMagnitudes.Count, 2, "Executed action magnitudes lacked diversity");
-        Assert.AreEqual(0f, native.BiasStrength, 0f, "Bias must be exactly zero at/after the scaled cutoff");
+        Assert.GreaterOrEqual(native.BiasStrength,.5f,"Unproven controllers must retain excitation after the nominal bias cutoff");
         Assert.AreEqual(0, native.ControlFailures, native.LastControlError);
         Assert.IsFalse(float.IsNaN(native.LastM2Loss) || float.IsInfinity(native.LastM2Loss));
         Assert.IsFalse(float.IsNaN(native.LastM3Loss) || float.IsInfinity(native.LastM3Loss));

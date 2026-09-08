@@ -114,6 +114,7 @@ adv_creature_2d_testing/python/checkpoints/live_ecosystem_v3.pt.tmp
 adv_creature_2d_testing/python/checkpoints/live_ecosystem_v5.pt
 adv_creature_2d_testing/python/checkpoints/live_ecosystem_v5.pt.tmp
 adv_creature_2d_testing/ProjectSettings/AI.Assistant/
+.checkpoint-archives/
 
 # Local Python runtime used by the live ecosystem (never commit downloaded
 # interpreters, virtual environments, or package caches).
