@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class EcosystemTelemetryHUD : MonoBehaviour
 {
+    private const float NativePanelPreferredWidth = 440f;
+    private const float NativePanelMaximumHeight = 230f;
     private GUIStyle style;
     private PythonBridge bridge;
     private PythonProcessManager process;
@@ -25,7 +27,16 @@ public class EcosystemTelemetryHUD : MonoBehaviour
         if (native != null && native.isActiveAndEnabled)
         {
             string fault = string.IsNullOrEmpty(native.LastCheckpointError) ? native.LastControlError : native.LastCheckpointError;
-            cachedDetails = $"NATIVE CONTINUAL M1/M2/M3  {native.ExperimentId}\n{native.Status}\nRender {native.RenderRateHz:F1} FPS   p95 {native.FrameP95Milliseconds:F1} ms   Physics {native.PhysicsMode} {native.PhysicsRateHz:F0} Hz\nTick {native.Tick}   Sequence {native.SequenceStep}/5   hold {NativeCreatureModel.ActionTicks} ticks   M1 {(native.M1Enabled ? "rtNEAT" : "curriculum")}   practice {native.PracticeCreatureCount}\nPopulation {native.Population}/{native.populationTarget}   Species {native.SpeciesCount}   Births {native.Generation}\nM2 total/pose/energy {native.LastM2Loss:F4}/{native.LastM2GoalLoss:F4}/{native.LastM2EnergyLoss:F4}   {(native.M2WarmupComplete ? "training" : "waiting for M3 warmup")}\nM2 L/R {native.LeftProposalLoss:F3}/{native.RightProposalLoss:F3} n {native.LeftProposalSamples}/{native.RightProposalSamples}   {native.DirectionState}\nM3 total/pose/anti0 {native.LastM3Loss:F4}/{native.LastM3Mse:F4}/{native.LastM3RelativeLoss:F4}\nM3 fresh/exposures/steps {native.FreshSequenceSamples}/{native.SharedM3Samples}/{native.SharedM3OptimizerSteps}   batch {native.LastM3BatchSize}\nReplay {native.ReplayCount}/{NativeReplayBuffer.Capacity}   learner {(native.LearnerBusy ? "training" : "idle")}   queue {native.LearnerQueueDepth}   drops {native.LearnerQueueDrops}   snapshot age {native.SnapshotAgeTicks} ticks\nGoal successes/failures {native.GoalSuccesses}/{native.GoalFailures}\n{native.CurriculumTelemetry}\nGoal {native.GoalTicksRemaining}/{NativeCreatureModel.GoalWindowTicks}   recenter {native.TemporaryGoalRecenters}   bias {native.BiasStrength:P0}   noise {native.ExplorationSigma:F3}°\nPlan {native.PlannerMilliseconds:F1} ms   learner {native.M3TrainingMilliseconds:F1} ms   checkpoint {native.CheckpointMilliseconds:F1} ms\nAction {native.LastActionMagnitude:F2}°   Controls {native.ActiveControlCount}/{native.Population}   Settling {native.SettlingCreatureCount}   Moving {native.MovingCreatureCount}\nRoot {native.MeanRootSpeed:F2}   Joint {native.MeanJointSpeed:F2}   Faults {native.ControlFailures}\nSave in {native.SecondsUntilCheckpoint:F0}s   {native.CheckpointStatus}\n{fault}";
+            string mode = native.M1Enabled ? "rtNEAT + ecosystem" : "success-gated curriculum";
+            string issue = string.IsNullOrWhiteSpace(fault) ? string.Empty : "\nIssue: " + fault;
+            cachedDetails = $"LOCOMOTION  ·  {mode}\n" +
+                            $"Tick {native.Tick:N0}  ·  {native.RenderRateHz:F0} FPS  ·  p95 {native.FrameP95Milliseconds:F1} ms  ·  {native.PhysicsRateHz:F0} Hz physics\n" +
+                            $"Population {native.Population}/{native.populationTarget}  ·  Births {native.Generation}  ·  Species {native.SpeciesCount}\n" +
+                            $"Goals {native.GoalSuccesses} success / {native.GoalFailures} failed  ·  Moving {native.MovingCreatureCount}/{native.Population}\n" +
+                            $"Current: {native.Status}\n" +
+                            $"Learning: M3 {native.SharedM3OptimizerSteps:N0} updates  ·  Replay {native.ReplayCount:N0}/{NativeReplayBuffer.Capacity:N0}  ·  {(native.LearnerBusy ? "training" : "idle")}\n" +
+                            $"Control {native.ActiveControlCount}/{native.Population}  ·  Queue {native.LearnerQueueDepth}  ·  Drops {native.LearnerQueueDrops}  ·  Faults {native.ControlFailures}\n" +
+                            $"Save: {native.CheckpointStatus}" + issue;
             return;
         }
         string transport = bridge == null ? "No bridge" : bridge.ConnectionStatus;
@@ -50,7 +61,7 @@ public class EcosystemTelemetryHUD : MonoBehaviour
     {
         if (style == null) style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 12,
                                                                wordWrap = true, padding = new RectOffset(7, 7, 6, 6) };
-        telemetryContent ??= new GUIContent(); telemetryContent.text=cachedDetails;float width=Mathf.Clamp(style.CalcSize(telemetryContent).x+14f,100f,Mathf.Max(100f,Screen.width-20f));float height=style.CalcHeight(telemetryContent,width)+12f;Rect telemetryRect=new Rect(10,10,width,height);GUI.Box(telemetryRect,telemetryContent,style);
+        telemetryContent ??= new GUIContent(); telemetryContent.text=cachedDetails;float width=Mathf.Min(NativePanelPreferredWidth,Mathf.Max(180f,Screen.width-20f));float maximumHeight=Mathf.Min(NativePanelMaximumHeight,Mathf.Max(80f,Screen.height-70f));float height=Mathf.Min(maximumHeight,style.CalcHeight(telemetryContent,width)+12f);Rect telemetryRect=new Rect(10,10,width,height);GUI.Box(telemetryRect,telemetryContent,style);
         if(native!=null&&!native.InteractiveFeaturesEnabled&&GUI.Button(new Rect(10,telemetryRect.yMax+8f,270f,28f),"Enable Food, Predators, M1, Births & Deaths"))native.EnableInteractiveFeaturesFromUser();
     }
 }
