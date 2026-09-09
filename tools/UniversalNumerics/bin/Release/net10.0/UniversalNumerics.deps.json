@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "UniversalNumerics/1.0.0": {
+        "runtime": {
+          "UniversalNumerics.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "UniversalNumerics/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

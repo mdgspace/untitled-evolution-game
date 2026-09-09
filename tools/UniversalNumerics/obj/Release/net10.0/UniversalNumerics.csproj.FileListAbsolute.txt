@@ -1,0 +1,15 @@
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\bin\Release\net10.0\UniversalNumerics.exe
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\bin\Release\net10.0\UniversalNumerics.deps.json
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\bin\Release\net10.0\UniversalNumerics.runtimeconfig.json
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\bin\Release\net10.0\UniversalNumerics.dll
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\bin\Release\net10.0\UniversalNumerics.pdb
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.AssemblyInfoInputs.cache
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.AssemblyInfo.cs
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.csproj.CoreCompileInputs.cache
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.sourcelink.json
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.dll
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\refint\UniversalNumerics.dll
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.pdb
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\UniversalNumerics.genruntimeconfig.cache
+C:\Users\Vrishin\Desktop\Projects\ai_stuff\untitled-evolution-game\tools\UniversalNumerics\obj\Release\net10.0\ref\UniversalNumerics.dll
