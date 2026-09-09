@@ -147,9 +147,15 @@ public class LiveEcosystemEditModeTests
     [Test]
     public void CurriculumStagesQualificationPracticeAndRetentionAreIndependent()
     {
-        CollectionAssert.AreEqual(new[]{0f,0f,5f,5f,10f,10f,15f,15f},Enumerable.Range(0,NativeSuccessCurriculum.StageCount).Select(NativeSuccessCurriculum.SlopeDegrees).ToArray());CollectionAssert.AreEqual(new[]{1,-1,1,-1,1,-1,1,-1},Enumerable.Range(0,NativeSuccessCurriculum.StageCount).Select(NativeSuccessCurriculum.Direction).ToArray());CollectionAssert.AreEqual(new[]{4f,4f,5f,5f,6f,6f,6f,6f},Enumerable.Range(0,NativeSuccessCurriculum.StageCount).Select(NativeSuccessCurriculum.Distance).ToArray());
+        CollectionAssert.AreEqual(new[]{0f,0f,5f,5f,10f,10f,15f,15f},Enumerable.Range(0,NativeSuccessCurriculum.StageCount).Select(NativeSuccessCurriculum.SlopeDegrees).ToArray());CollectionAssert.AreEqual(new[]{1,-1,1,-1,1,-1,1,-1},Enumerable.Range(0,NativeSuccessCurriculum.StageCount).Select(NativeSuccessCurriculum.Direction).ToArray());CollectionAssert.AreEqual(new[]{40f,40f,50f,50f,60f,60f,60f,60f},Enumerable.Range(0,NativeSuccessCurriculum.StageCount).Select(NativeSuccessCurriculum.Distance).ToArray());
         var state=new NativeCurriculumState{mode=NativeTrialMode.Training};NativeBrainWeights weights=NativeBrainWeights.Create(91);for(int i=0;i<10;i++)NativeSuccessCurriculum.RegisterSuccess(state,weights);Assert.AreEqual(NativeTrialMode.Qualification,state.mode);Assert.IsNotNull(state.qualificationSnapshot);for(int i=0;i<10;i++)NativeSuccessCurriculum.RegisterSuccess(state,weights);NativeSuccessCurriculum.RegisterFailure(state,weights);NativeSuccessCurriculum.RegisterFailure(state,weights);Assert.AreEqual(1,state.stage);CollectionAssert.AreEqual(new[]{0},state.passedStages);Assert.AreEqual(NativeTrialMode.Training,state.mode);
         state.ordinaryTrials=4;NativeSuccessCurriculum.StartNextTrial(state);Assert.AreEqual(NativeTrialMode.Practice,state.mode);var rng=new NativeDeterministicRng(7);Assert.AreEqual(0,NativeSuccessCurriculum.TrialStage(state,ref rng));state.ordinaryTrials=19;state.mode=NativeTrialMode.Settling;NativeSuccessCurriculum.StartNextTrial(state);Assert.AreEqual(NativeTrialMode.Retention,state.mode);state.stage=NativeSuccessCurriculum.StageCount;state.mode=NativeTrialMode.Settling;NativeSuccessCurriculum.StartNextTrial(state);Assert.AreEqual(NativeTrialMode.Practice,state.mode);
+    }
+
+    [Test]
+    public void ExpandedWorldUsesWideEcosystemSpawnGrid()
+    {
+        Assert.AreEqual(480f,WorldLayout.WorldBoundaryHalfWidth);Assert.AreEqual(472f,WorldLayout.GoalHalfWidth);Assert.AreEqual(new Vector2(-320f,WorldLayout.GroundTop+2.5f),WorldLayout.CreatureSpawnPosition(0));Assert.AreEqual(new Vector2(320f,WorldLayout.GroundTop+2.5f),WorldLayout.CreatureSpawnPosition(4));
     }
 
     [Test]

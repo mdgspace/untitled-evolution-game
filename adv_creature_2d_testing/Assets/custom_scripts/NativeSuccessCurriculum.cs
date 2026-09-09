@@ -30,7 +30,7 @@ public static class NativeSuccessCurriculum
     public const int StageCount = 8;
     private static readonly float[] Slopes = { 0f, 0f, 5f, 5f, 10f, 10f, 15f, 15f };
     private static readonly int[] Directions = { 1, -1, 1, -1, 1, -1, 1, -1 };
-    private static readonly float[] Distances = { 4f, 4f, 5f, 5f, 6f, 6f, 6f, 6f };
+    private static readonly float[] Distances = { 40f, 40f, 50f, 50f, 60f, 60f, 60f, 60f };
 
     public static float SlopeDegrees(int stage) => Slopes[Mathf.Clamp(stage, 0, StageCount - 1)];
     public static int Direction(int stage) => Directions[Mathf.Clamp(stage, 0, StageCount - 1)];

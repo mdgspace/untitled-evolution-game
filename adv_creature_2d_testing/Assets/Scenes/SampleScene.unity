@@ -375,8 +375,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: LiveEcosystem.Runtime::ObserverCamera
   panSpeed: 28
-  worldMinX: -280
-  worldMaxX: 280
+  worldMinX: -480
+  worldMaxX: 480
   worldMinY: -8
   worldMaxY: 24
   minimumZoom: 4
@@ -457,7 +457,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3d73b34279eb37e40b9d670c8c4926ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: LiveEcosystem.Runtime::EnvironmentSpawner
-  groundWidth: 560
+  groundWidth: 960
   groundThickness: 1
   groundCenter: {x: 0, y: -5}
   foodCount: 10

@@ -28,23 +28,24 @@ public static class BodyUtils
 // drifting back into a small centre-of-map cluster.
 public static class WorldLayout
 {
-    // Keep controller normalization stable while expanding the physical arena.
-    // Changing this value would rescale learned M1/M2 inputs mid-training.
-    public const float WorldHalfWidth = 200f;
-    public const float WorldBoundaryHalfWidth = 280f;
+    // The normalization and physical boundary scale together. Checkpoints use
+    // a matching configuration fingerprint, so older coordinate scales cannot
+    // be resumed under this expanded arena.
+    public const float WorldHalfWidth = 480f;
+    public const float WorldBoundaryHalfWidth = 480f;
     public const float GoalBoundaryMargin = 8f;
     public const float GoalHalfWidth = WorldBoundaryHalfWidth - GoalBoundaryMargin;
     public const float GroundTop = -4.5f;
-    public const int SpawnColumns = 6;
+    public const int SpawnColumns = 5;
     public const int MaximumNativeSpawnSlots = 10;
-    public const float SpawnColumnSpacing = 64f;
+    public const float SpawnColumnSpacing = 160f;
     public const float SpawnRowSpacing = 64f;
 
     public static Vector2 CreatureSpawnPosition(int slot)
     {
         int column = slot % SpawnColumns;
         int row = slot / SpawnColumns;
-        return new Vector2(-160f + column * SpawnColumnSpacing, GroundTop + 2.5f + row * SpawnRowSpacing);
+        return new Vector2((column-(SpawnColumns-1)*.5f)*SpawnColumnSpacing, GroundTop + 2.5f + row * SpawnRowSpacing);
     }
 
     public static bool IsFarFromCreatureSpawns(Vector2 point, float minimumDistance)
