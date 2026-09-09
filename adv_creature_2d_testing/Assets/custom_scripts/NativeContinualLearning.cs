@@ -19,7 +19,7 @@ public sealed class NativeSynapticSlot
 public sealed class NativeSynapticIntelligence
 {
     public const int WarmupUpdates=256,ConsolidationInterval=128;
-    public const float Strength=.1f,ImportanceCap=10f,Epsilon=1e-3f;
+    public const float Strength=.2f,ImportanceCap=10f,Epsilon=1e-3f;
     [JsonIgnore] public List<NativeSynapticSlot> slots=new List<NativeSynapticSlot>();
 
     public NativeSynapticIntelligence Clone(){var copy=new NativeSynapticIntelligence();foreach(var slot in slots??new List<NativeSynapticSlot>())copy.slots.Add(slot.Clone());return copy;}
@@ -45,24 +45,30 @@ public sealed class NativeSynapticIntelligence
 [Serializable]
 public sealed class NativeReplayBuffer
 {
-    public const int Capacity=8192;
+    public const int Capacity=16384;
     public long seen;
     public NativeDeterministicRng random=new NativeDeterministicRng(0xC01DF00DUL);
     [JsonIgnore] public List<NativeCompletedSequence> samples=new List<NativeCompletedSequence>();
+    [JsonIgnore] private Dictionary<string,List<int>> compatible=new Dictionary<string,List<int>>(StringComparer.Ordinal);
     public int Count=>samples?.Count??0;
 
     public void Offer(NativeCompletedSequence sample)
     {
-        if(sample?.observation==null)return;seen++;NativeCompletedSequence copy=sample.Clone();if(samples.Count<Capacity){samples.Add(copy);return;}long candidate=(long)(random.NextFloat()*seen);if(candidate<Capacity)samples[(int)candidate]=copy;
+        if(sample?.observation==null)return;seen++;NativeCompletedSequence copy=sample.Clone();if(samples.Count<Capacity){samples.Add(copy);Index(samples.Count-1,copy.bodySignature);return;}long candidate=NextLongBelow(seen);if(candidate<Capacity){int slot=(int)candidate;Unindex(slot,samples[slot]?.bodySignature);samples[slot]=copy;Index(slot,copy.bodySignature);}
     }
     public List<NativeCompletedSequence> Sample(int count,string bodySignature=null)
     {
-        var eligible=new List<NativeCompletedSequence>();foreach(var sample in samples)if(bodySignature==null||string.Equals(sample.bodySignature,bodySignature,StringComparison.Ordinal))eligible.Add(sample);var result=new List<NativeCompletedSequence>(Math.Min(count,eligible.Count));for(int i=0;i<count&&eligible.Count>0;i++){int index=Math.Min(eligible.Count-1,(int)(random.NextFloat()*eligible.Count));result.Add(eligible[index]);eligible.RemoveAt(index);}return result;
+        EnsureIndex();List<int> eligible=bodySignature==null?null:(compatible.TryGetValue(bodySignature,out var indexed)?indexed:null);int available=eligible==null?(bodySignature==null?samples.Count:0):eligible.Count;var result=new List<NativeCompletedSequence>(Math.Min(count,available));var selected=new HashSet<int>();while(result.Count<count&&selected.Count<available){int slot=eligible==null?random.NextInt(samples.Count):eligible[random.NextInt(eligible.Count)];if(selected.Add(slot))result.Add(samples[slot]);}return result;
     }
-    public NativeReplayBuffer Clone(){var copy=new NativeReplayBuffer{seen=seen,random=new NativeDeterministicRng(random.State)};foreach(var sample in samples??new List<NativeCompletedSequence>())copy.samples.Add(sample.Clone());return copy;}
+    public NativeReplayBuffer Clone(){var copy=new NativeReplayBuffer{seen=seen,random=new NativeDeterministicRng(random.State)};foreach(var sample in samples??new List<NativeCompletedSequence>()){copy.samples.Add(sample.Clone());copy.Index(copy.samples.Count-1,sample.bodySignature);}return copy;}
+    public void RebuildIndex(){compatible=new Dictionary<string,List<int>>(StringComparer.Ordinal);for(int i=0;i<samples.Count;i++)Index(i,samples[i]?.bodySignature);}
+    private void EnsureIndex(){if(compatible==null||compatible.Count==0&&samples.Count>0)RebuildIndex();}
+    private void Index(int slot,string signature){signature=signature??string.Empty;if(!compatible.TryGetValue(signature,out var list))compatible[signature]=list=new List<int>();list.Add(slot);}
+    private void Unindex(int slot,string signature){signature=signature??string.Empty;if(!compatible.TryGetValue(signature,out var list))return;list.Remove(slot);if(list.Count==0)compatible.Remove(signature);}
+    private long NextLongBelow(long exclusiveMax)=>random.NextLong(exclusiveMax);
     public static NativeObservation CloneObservation(NativeObservation value)
     {
-        if(value==null)return null;return new NativeObservation{torsoWithGoal=Copy(value.torsoWithGoal),torsoWithoutGoal=Copy(value.torsoWithoutGoal),jointFeatures=Copy(value.jointFeatures),positionEncodings=Copy(value.positionEncodings),limbCount=value.limbCount,tick=value.tick,controllerId=value.controllerId,bodySignature=value.bodySignature,practice=value.practice,goalX=value.goalX,goalY=value.goalY,goalHeadingSin=value.goalHeadingSin,goalHeadingCos=value.goalHeadingCos,worldGoalX=value.worldGoalX,worldGoalY=value.worldGoalY,worldGoalHeadingSin=value.worldGoalHeadingSin,worldGoalHeadingCos=value.worldGoalHeadingCos,startWorldX=value.startWorldX,startWorldY=value.startWorldY,startWorldRotationDegrees=value.startWorldRotationDegrees};
+        if(value==null)return null;return new NativeObservation{torsoWithGoal=Copy(value.torsoWithGoal),torsoWithoutGoal=Copy(value.torsoWithoutGoal),jointFeatures=Copy(value.jointFeatures),positionEncodings=Copy(value.positionEncodings),limbCount=value.limbCount,tick=value.tick,episode=value.episode,controllerId=value.controllerId,bodySignature=value.bodySignature,practice=value.practice,goalX=value.goalX,goalY=value.goalY,goalHeadingSin=value.goalHeadingSin,goalHeadingCos=value.goalHeadingCos,worldGoalX=value.worldGoalX,worldGoalY=value.worldGoalY,worldGoalHeadingSin=value.worldGoalHeadingSin,worldGoalHeadingCos=value.worldGoalHeadingCos,startWorldX=value.startWorldX,startWorldY=value.startWorldY,startWorldRotationDegrees=value.startWorldRotationDegrees};
     }
     private static float[] Copy(float[] values)=>values==null?null:(float[])values.Clone();
 }
