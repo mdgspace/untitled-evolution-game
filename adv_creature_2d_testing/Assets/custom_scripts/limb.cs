@@ -26,10 +26,17 @@ public class Limb : MonoBehaviour
     private HingeJoint2D hinge;
     private readonly HashSet<Collider2D> contacts = new HashSet<Collider2D>();
     private int actionTicksRemaining;
+    private float contactTangentialVelocity;
 
     public Rigidbody2D Rigidbody => rb;
     public float JointAngle => hinge == null ? 0f : hinge.jointAngle;
     public float JointSpeed => hinge == null ? 0f : hinge.jointSpeed;
+    public Vector2 BaseWorldPosition => hinge == null ? transform.position : transform.TransformPoint(hinge.anchor);
+    public Vector2 DistalWorldPosition => transform.TransformPoint(new Vector2(.5f, 0f));
+    public Vector2 LocalEndpointVelocity => rb == null ? Vector2.zero : rb.GetPointVelocity(DistalWorldPosition);
+    public float Mass => rb == null ? 0f : rb.mass;
+    public float Inertia => rb == null ? 0f : rb.inertia;
+    public float ContactTangentialVelocity => contactTangentialVelocity;
     public float MinAngle => hinge == null ? 0f : hinge.limits.min;
     public float MaxAngle => hinge == null ? 0f : hinge.limits.max;
     public bool AtJointLimit {
@@ -113,10 +120,12 @@ public class Limb : MonoBehaviour
         if (hinge != null) { hinge.useMotor = false; hinge.enabled = false; }
         if (rb != null) { rb.linearVelocity = Vector2.zero; rb.angularVelocity = 0f; rb.simulated = false; }
         foreach (Collider2D collider in GetComponents<Collider2D>()) collider.enabled = false;
-        contacts.Clear(); TouchingSelf = TouchingOtherCreature = TouchingEnvironment = false;
+        contacts.Clear(); contactTangentialVelocity = 0f; TouchingSelf = TouchingOtherCreature = TouchingEnvironment = false;
     }
-    private void OnCollisionEnter2D(Collision2D collision) { contacts.Add(collision.collider); RecomputeTouch(); }
-    private void OnCollisionExit2D(Collision2D collision) { contacts.Remove(collision.collider); RecomputeTouch(); }
+    private void OnCollisionEnter2D(Collision2D collision) { contacts.Add(collision.collider); RecomputeTouch(); UpdateContactMotion(collision); }
+    private void OnCollisionStay2D(Collision2D collision) { UpdateContactMotion(collision); }
+    private void OnCollisionExit2D(Collision2D collision) { contacts.Remove(collision.collider); RecomputeTouch(); if(!TouchingEnvironment)contactTangentialVelocity=0f; }
+    private void UpdateContactMotion(Collision2D collision){if(rb==null||collision==null||collision.collider==null||collision.collider.GetComponent<BodyPart>()!=null||collision.contactCount==0)return;ContactPoint2D point=collision.GetContact(0);Vector2 tangent=new Vector2(-point.normal.y,point.normal.x),otherVelocity=collision.rigidbody==null?Vector2.zero:collision.rigidbody.GetPointVelocity(point.point);contactTangentialVelocity=Vector2.Dot(rb.GetPointVelocity(point.point)-otherVelocity,tangent);}
     private void RecomputeTouch() {
         TouchingSelf = TouchingOtherCreature = TouchingEnvironment = false;
         contacts.RemoveWhere(other => other == null);

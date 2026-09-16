@@ -27,14 +27,18 @@ public class EcosystemTelemetryHUD : MonoBehaviour
         if (native != null && native.isActiveAndEnabled)
         {
             string fault = string.IsNullOrEmpty(native.LastCheckpointError) ? native.LastControlError : native.LastCheckpointError;
-            string mode = native.M1Enabled ? "rtNEAT + ecosystem" : "success-gated curriculum";
+            string mode = native.M1Enabled ? "rtNEAT + ecosystem" : "v26 movement school";
             string issue = string.IsNullOrWhiteSpace(fault) ? string.Empty : "\nIssue: " + fault;
             cachedDetails = $"LOCOMOTION  ·  {mode}\n" +
                             $"Tick {native.Tick:N0}  ·  {native.RenderRateHz:F0} FPS  ·  p95 {native.FrameP95Milliseconds:F1} ms  ·  {native.PhysicsRateHz:F0} Hz physics\n" +
                             $"Population {native.Population}/{native.populationTarget}  ·  Births {native.Generation}  ·  Species {native.SpeciesCount}\n" +
                             $"Goals {native.GoalSuccesses} success / {native.GoalFailures} failed  ·  Moving {native.MovingCreatureCount}/{native.Population}\n" +
                             $"Current: {native.Status}\n" +
-                            $"Learning: M3 {native.SharedM3OptimizerSteps:N0} updates  ·  Replay {native.ReplayCount:N0}/{NativeReplayBuffer.Capacity:N0}  ·  {(native.LearnerBusy ? "training" : "idle")}\n" +
+                            $"Experiment: {native.MovementExperiment}\n" +
+                            $"Learning: shared graph M2/M3  ·  PPO {native.M2TrainingUpdates:N0}  ·  M3 {native.SharedM3OptimizerSteps:N0}  ·  Replay {native.ReplayCount:N0}/4,096  ·  progress {native.UsefulReplayCount:N0}  ·  contact {native.ContactReplayCount:N0}\n" +
+                            $"Rhythm {native.RhythmFrequency:F2} Hz  ·  PPO loss {native.LastPpoPolicyLoss:F3}  ·  value {native.LastValueLoss:F3}  ·  KL {native.LastPolicyKl:F4}\n" +
+                            $"M3 loss {native.LastM3Loss:F4}  ·  inverse {native.LastInverseAccuracy:P0}  ·  curiosity {native.LastCuriosityReward:F4}  ·  {(native.M2WarmupComplete?"curiosity ready":"curiosity gated")}\n" +
+                            $"Held-out M3 {native.LastM3Loss:F4}  ·  no-change {native.LastM3NoChangeLoss:F4}  ·  constant-v {native.LastM3ConstantVelocityLoss:F4}  ·  action-blind {native.LastM3ActionBlindLoss:F4}\n" +
                             $"Control {native.ActiveControlCount}/{native.Population}  ·  Queue {native.LearnerQueueDepth}  ·  Drops {native.LearnerQueueDrops}  ·  Faults {native.ControlFailures}\n" +
                             $"Save: {native.CheckpointStatus}" + issue;
             return;

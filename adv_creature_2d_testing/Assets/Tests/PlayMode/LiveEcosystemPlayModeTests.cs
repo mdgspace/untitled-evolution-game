@@ -38,7 +38,7 @@ public class LiveEcosystemPlayModeTests
         EnvironmentSpawner environment = Object.FindAnyObjectByType<EnvironmentSpawner>();
         Assert.NotNull(environment);
         Assert.AreEqual(1, Object.FindObjectsByType<EnvironmentSpawner>(FindObjectsInactive.Exclude).Length);
-        Assert.AreEqual(10, native.Population, native.LastCheckpointError);
+        Assert.AreEqual(4, native.Population, native.LastCheckpointError);
         Assert.That(native.SpeciesCount,Is.InRange(1,NativeEcosystemController.InitialBodySpeciesCount),native.LoadedFromCheckpoint?"Loaded populations retain their persisted species":"Fresh bodies are grouped by the morphology distance threshold");
         Assert.NotNull(Object.FindAnyObjectByType<ObserverCamera>());
         Assert.NotNull(GameObject.Find("WorldWallLeft"));
@@ -51,7 +51,7 @@ public class LiveEcosystemPlayModeTests
 
     [UnityTest]
     [Timeout(240000)]
-    public IEnumerator OpenLoopControllerSurvivesScaledBiasDecayAndReplacement()
+    public IEnumerator V26MovementSchoolCollectsPhysicalTransitionsAndCompletesPpoRollout()
     {
         SceneManager.LoadScene("SampleScene", LoadSceneMode.Single);
         yield return null;
@@ -65,45 +65,39 @@ public class LiveEcosystemPlayModeTests
         Assert.NotNull(native);
         Assert.AreEqual(native.populationTarget, native.Population, native.LastCheckpointError);
 
-        CreatureBrain protectedCreature=Object.FindObjectsByType<CreatureBrain>(FindObjectsInactive.Exclude).FirstOrDefault(b=>!b.IsDead);Assert.NotNull(protectedCreature);protectedCreature.Kill("pre-activation death must be blocked");Assert.IsFalse(protectedCreature.IsDead);
-        native.EnableInteractiveFeaturesFromUser();Assert.IsTrue(native.M1Enabled);Assert.IsTrue(native.PopulationDynamicsEnabled);
         int startTick = native.Tick;
         int startM3 = native.SharedM3Updates;
-        int startReplacements = native.ImmediateReplacementCount;
-        bool forcedDeath = false;
         var actionMagnitudes = new System.Collections.Generic.HashSet<int>();
+        float peakJointSpeed=0f,peakCommand=0f;
         Time.timeScale = 100f;
         float deadline = Time.realtimeSinceStartup + 210f;
-        while (native != null && native.Tick - startTick < NativeCreatureModel.ActionBiasEndTick && Time.realtimeSinceStartup < deadline) {
+        while (native != null && native.Tick - startTick < 1800 && Time.realtimeSinceStartup < deadline) {
             if (native.LastActionMagnitude > 0f) actionMagnitudes.Add(Mathf.RoundToInt(native.LastActionMagnitude * 1000f));
-            if (!forcedDeath && native.Tick - startTick >= 90) {
-                CreatureBrain victim = Object.FindObjectsByType<CreatureBrain>(FindObjectsInactive.Exclude).FirstOrDefault(b => !b.IsDead);
-                Assert.NotNull(victim);
-                victim.Kill("open-loop replacement acceptance test");
-                forcedDeath = true;
-            }
+            peakJointSpeed=Mathf.Max(peakJointSpeed,native.MeanJointSpeed);peakCommand=Mathf.Max(peakCommand,native.LastExecutedActionMagnitude);
             yield return null;
         }
 
         Assert.NotNull(native);
-        Assert.GreaterOrEqual(native.Tick - startTick, NativeCreatureModel.ActionBiasEndTick, "Scaled bias-decay physics ticks did not finish before the real-time deadline");
-        Assert.AreEqual(native.populationTarget, native.Population, native.ReplacementRetryState);
-        Assert.Greater(native.ImmediateReplacementCount, startReplacements, "Forced death was not replaced");
-        Assert.Greater(native.SharedM3Updates, startM3 + 100, "Shared M3 did not continue training");
-        Assert.Greater(native.LastM3BatchSize,0,"No completed creature sequence reached the shared M3 batch");
-        Assert.Greater(actionMagnitudes.Count, 2, "Executed action magnitudes lacked diversity");
-        Assert.GreaterOrEqual(native.BiasStrength,.5f,"Unproven controllers must retain excitation after the nominal bias cutoff");
+        Assert.GreaterOrEqual(native.Tick - startTick, 1800, "Movement-school smoke run did not finish before the real-time deadline");
+        Assert.IsFalse(native.M1Enabled);Assert.IsFalse(native.PopulationDynamicsEnabled);
+        Assert.AreEqual(native.populationTarget, native.Population);
+        Assert.Greater(native.SharedM3Updates, startM3 + 500, "Shared M3 did not train from measured physical transitions");
+        Assert.GreaterOrEqual(native.M2TrainingUpdates,1,"Four collectors did not fill one 1,024-transition PPO rollout");
+        Assert.Greater(native.ReplayCount,0);Assert.Greater(native.LastM3BatchSize,0);
+        Assert.Greater(actionMagnitudes.Count, 1, "Rendered samples did not capture multiple action magnitudes");
+        Assert.Greater(peakCommand,0f,"The bounded controller never issued a motor command");
+        Assert.Greater(peakJointSpeed,.01f,"Motor commands produced no measurable joint response under load");
         Assert.AreEqual(0, native.ControlFailures, native.LastControlError);
         Assert.IsFalse(float.IsNaN(native.LastM2Loss) || float.IsInfinity(native.LastM2Loss));
         Assert.IsFalse(float.IsNaN(native.LastM3Loss) || float.IsInfinity(native.LastM3Loss));
-        Assert.That(native.SequenceStep, Is.InRange(0, NativeCreatureModel.PlanningHorizon));
-        Debug.Log($"OPEN_LOOP_SCALED tick_delta={native.Tick-startTick} population={native.Population} replacements={native.ImmediateReplacementCount-startReplacements} m3_updates={native.SharedM3Updates-startM3} action_magnitude_variants={actionMagnitudes.Count} bias={native.BiasStrength:R} m2_loss={native.LastM2Loss:R} m3_loss={native.LastM3Loss:R} control_failures={native.ControlFailures}");
+        Assert.That(native.RhythmFrequency, Is.InRange(.25f,3f));
+        Debug.Log($"V26_MOVEMENT_SCHOOL tick_delta={native.Tick-startTick} population={native.Population} m3_updates={native.SharedM3Updates-startM3} ppo_updates={native.M2TrainingUpdates} replay={native.ReplayCount} action_magnitude_variants={actionMagnitudes.Count} peak_joint_speed={peakJointSpeed:R} policy_loss={native.LastPpoPolicyLoss:R} value_loss={native.LastValueLoss:R} m3_loss={native.LastM3Loss:R} control_failures={native.ControlFailures}");
     }
 
     [UnityTest]
-    [Explicit("Manual 20,000-tick v18 comparison harness; excluded from routine validation")]
+    [Explicit("Manual 20,000-tick v26 learning-stability harness; excluded from routine validation")]
     [Timeout(420000)]
-    public IEnumerator V18ManualComparisonRunsTwentyThousandTicksWithInteractiveFeaturesOff()
+    public IEnumerator V26ManualStabilityRunsTwentyThousandTicksWithMovementSchoolEnabled()
     {
         SceneManager.LoadScene("SampleScene", LoadSceneMode.Single);
         yield return null;
@@ -141,7 +135,7 @@ public class LiveEcosystemPlayModeTests
         timer.Stop();
 
         Assert.NotNull(native);
-        Assert.GreaterOrEqual(native.Tick - startTick, 20000, "v18 comparison run did not complete before the real-time deadline");
+        Assert.GreaterOrEqual(native.Tick - startTick, 20000, "v26 stability run did not complete before the real-time deadline");
         Assert.IsFalse(native.M1Enabled);
         Assert.IsFalse(native.PopulationDynamicsEnabled);
         Assert.AreEqual(0, native.ImmediateReplacementCount);

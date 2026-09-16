@@ -37,7 +37,7 @@ public static class WorldLayout
     public const float GoalHalfWidth = WorldBoundaryHalfWidth - GoalBoundaryMargin;
     public const float GroundTop = -4.5f;
     public const int SpawnColumns = 5;
-    public const int MaximumNativeSpawnSlots = 10;
+    public const int MaximumNativeSpawnSlots = 4;
     public const float SpawnColumnSpacing = 160f;
     public const float SpawnRowSpacing = 64f;
 
